@@ -28,7 +28,11 @@ var Daemon = function connect_mongodb( // 连接数据库
 		username, // 用户名
 		password) { // 密码
 	if (!connection_string) { throw new Error("need connection_string"); }
-	console.log("connect_mongodb(" + arguments ? [].join.apply(arguments) : "" + ")");
+	if (username && password) {
+		console.log("connect_mongodb(" + [connection_string, username, "********"].join(", ") + ")");
+	} else {
+		console.log("connect_mongodb(" + connection_string + ")");
+	}
 	var defer = Q.defer();
 	this._db = defer.promise;
 
@@ -85,8 +89,12 @@ Daemon.prototype.session = function _session_route(options) {
 		if (stub) { stub.apply(this, [].slice.apply(arguments)); }
 	});
 };
+Daemon.prototype.collection = function collection(col) {
+	if (typeof col !== "string") throw new Error("need collectionName");
+	return this._db.then(function(db) { return db.collection(col) });
+};
 Daemon.prototype.mongodb = function _mongodb_route() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
-	var promise = this._db;
+	var self = this, promise = self._db;
 	// 替换express的json响应
 	var _json = express.response.json;
 	express.response.json = function _mongodb_json() {
@@ -178,10 +186,7 @@ Daemon.prototype.mongodb = function _mongodb_route() { // 向req中注入一些�
 	}
 	return (function(req, res, next) {
 		// 自动注入某些通用参数（排序、分页等）
-		req.col = function collection(col) {
-			if (typeof col !== "string") throw new Error("need collectionName");
-			return promise.then(function(db) { return db.collection(col) });
-		};
+		req.col = self.collection.bind(self);
 		req.find = function find(col, query, fields, sort, skip, limit) {
 			if (typeof col !== "string") throw new Error("need collectionName");
 			var $sort = req.query.$sort || req.body.$sort,
