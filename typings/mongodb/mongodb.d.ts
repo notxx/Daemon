@@ -484,4 +484,9 @@ declare module "mongodb" {
     pkFactory?: any;
     readPreference?: string;
   }
+  
+}
+
+export class mongodb {
+  static BSONNative: boolean;
 }
