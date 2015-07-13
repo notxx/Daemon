@@ -28,8 +28,12 @@ declare module "express" {
     import serveStatic = require('serve-static');
 
     function e(): e.Express;
-
     module e {
+        export class response {
+            static json(status: number, body?: any): any;
+            static json(body: any): any;
+        }
+        
         interface IRoute {
             path: string;
             stack: any;

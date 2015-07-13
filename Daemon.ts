@@ -11,8 +11,8 @@ import express = require("express");
 import bodyParser = require("body-parser");
 import cookieParser = require("cookie-parser");
 import session = require("express-session");
-import connectMongo = require('connect-mongo');
-var MongoStore = connectMongo(session);
+import cm = require('connect-mongo');
+var MongoStore = cm(session);
 import serveStatic = require('serve-static');
 
 // mongodb & promise
@@ -62,7 +62,12 @@ interface Response extends express.Response {
 	update:(r:any) => any;
 	ex: (ex:Error | any) => any;
 }
-export class Daemon {
+
+declare module daemon {
+	
+}
+
+class Daemon {
 	static conf:any;
 	static CGI(basepath: string, conf: any) {
 		var domainCache:any = {}; // 执行域缓存
@@ -113,7 +118,11 @@ export class Daemon {
 	};
 	_db: Q.Promise<mp.Db>; // 打开的mongodb的promise
 	constructor(connection_string: string, username?: string, password?: string) {
-		console.log("connect_mongodb(" + arguments ? [].join.apply(arguments) : "" + ")");
+		if (username && password) {
+			console.log("connect_mongodb(" + [connection_string, username, "********"].join(", ") + ")");
+		} else {
+			console.log("connect_mongodb(" + connection_string + ")");
+		}
 		var defer = Q.defer<mp.Db>();
 		this._db = defer.promise;
 	
@@ -138,6 +147,10 @@ export class Daemon {
 				defer.resolve(db);
 			}
 		}).done();
+	};
+	collection(col:string) {
+		if (typeof col !== "string") throw new Error("need collectionName");
+		return this._db.then(function(db) { return db.collection(col); });		
 	};
 	session(options: SessionOptions) {
 		function _session(opt: SessionOptions) {
@@ -168,17 +181,17 @@ export class Daemon {
 		});
 	};
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
-		var promise = this._db;
+		var self = this;
 		// 替换express的json响应
-		var _json:express.Send = express.Response.json;
-		express.Response.json = function _mongodb_json() {
+		var _json = express.response.json;
+		express.response.json = function _mongodb_json() {
 			function replacer(indent: number, path: Array<string|number>, value: any) { // 实际展开值的函数
 				//console.log("replacer", indent, path);
 				if (typeof value !== "object" || !value) { return value; }
 				var con = value.constructor;
 				//console.log("replacer", con.name, con === ObjectID);
-				var caller = arguments.caller,
-					callee = arguments.callee;
+				var callee = arguments.callee,
+					caller = callee.caller;
 				if (Array.isArray(value)) { // Array
 					var promises = Array<Q.Promise<any>>();
 					(<Array<any>>value).forEach(function(v, i) {
@@ -194,9 +207,7 @@ export class Daemon {
 					return { $id: value.toHexString() };
 				} else if (con === DBRef) {
 					var defer = Q.defer();
-					promise.then(function(db) {
-						return db.collection(value.namespace);
-					}).then(function(col) {
+					self.collection(value.namespace).then(function(col) {
 						var columns = { name: 1 };
 						switch (value.namespace) {
 						case 'operator':
@@ -281,10 +292,7 @@ export class Daemon {
 		}
 		return (<express.RequestHandler>function(req:Request, res:Response, next:Function) {
 			// 自动注入某些通用参数（排序、分页等）
-			req.col = function collection(col:string) {
-				if (typeof col !== "string") throw new Error("need collectionName");
-				return promise.then(function(db) { return db.collection(col) });
-			};
+			req.col = self.collection.bind(self);
 			req.find = function find(col, query?, fields?, sort?, skip?, limit?) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				var $sort = req.query.$sort || req.body.$sort,
@@ -304,8 +312,7 @@ export class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					var cursor = collection.find(query || {}, fields || $fields || {});
 					cursor.sort(sort || $sort);
 					cursor.skip(skip || $skip);
@@ -345,8 +352,7 @@ export class Daemon {
 			req.findOne = function findOne(col, query, fields) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				var $fields = req.query.$fields || req.body.$fields;
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					return collection.findOne(query || {}, fields || $fields || {});
 				});
 			};
@@ -355,8 +361,7 @@ export class Daemon {
 			};
 			req.insert = function insert(col, op) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					return collection.insert(op);
 				});
 			};
@@ -368,22 +373,19 @@ export class Daemon {
 			};
 			req.save = function save(col, op) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					return collection.save(op);
 				});
 			};
 			req.update = function update(col, query, op, options) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					return collection.update(query, op, options);
 				});
 			};
 			req.remove = function remove(col, query) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return promise.then(function(db) { return db.collection(col); })
-				.then(function(collection) {
+				return self.collection(col).then(function(collection) {
 					return collection.remove(query);
 				});
 			};
@@ -468,4 +470,4 @@ export class Daemon {
 	};
 }
 
-module.exports = Daemon;
+export = Daemon;
