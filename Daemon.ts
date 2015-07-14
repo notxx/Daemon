@@ -34,33 +34,47 @@ declare module Daemon {
 		stringify: boolean;
 	}
 
+	interface UpdateResult {
+		result: {
+			ok:number,
+			n: number,
+			nInserted: number
+			nMatched: number
+			nModified: number
+			nRemoved: number
+			nUpserted: number
+		}
+	}
+	interface InsertResult extends UpdateResult {
+		ops: {}
+	}
 	interface Request extends express.Request {
-		col:(collectionName:string) => Q.Promise<mp.Collection>;
-		find:(col:string, query?:{}, fields?:{}, sort?:{}|string, skip?:number, limit?:number) => Q.Promise<any[]>;
-		_find:(r:any) => any;
-		findOne:(col:string, query:any, fields?:any) => Q.Promise<any>;
-		_findOne:(r:any) => any;
-		_array:(r:any) => any;
-		insert:(col:string, op:any) => Q.Promise<any>;
-		_insert:(r:any) => any;
-		save:(col:string, op:any) => Q.Promise<any>;
-		_save:(r:any) => any;
-		update:(col:string, query:any, op:any, options?:any) => Q.Promise<any>;
-		_update:(r:any) => any;
-		remove:(col:string, op:any) => Q.Promise<any>;
-		_remove:(r:any) => any;
-		_ex: (ex:Error | any) => any;
+		col:<T>(collectionName:string) => Q.Promise<mp.Collection<T>>;
+		find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Q.Promise<any[]>;
+		_find:<T>(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) => void;
+		findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
+		_findOne:<T>(r:T) => void;
+		_array:<T>(r:T[]) => void;
+		insert:(col:string, op:any) => Q.Promise<InsertResult>;
+		_insert:(r:InsertResult) => void;
+		save:<T>(col:string, op:T) => Q.Promise<UpdateResult>;
+		_save:<T>(r:UpdateResult) => void;
+		update:(col:string, query:any, op:any, options?:any) => Q.Promise<UpdateResult>;
+		_update:(r:UpdateResult) => void;
+		remove:(col:string, op:any) => Q.Promise<UpdateResult>;
+		_remove:(r:UpdateResult) => void;
+		_ex: (ex:Error | {}) => void;
 	
 		_export:(data:any, name:string[]) => void;
 		_exportInt:(data:any, name:string[]) => void;
 	}
 	interface Response extends express.Response {
-		find:(r:any) => any;
-		findOne:(r:any) => any;
-		array:(r:any) => any;
-		insert:(r:any) => any;
-		update:(r:any) => any;
-		ex: (ex:Error | any) => any;
+		find:<T>(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) => void;
+		findOne:<T>(r:T) => void;
+		array:<T>(r:T[]) => void;
+		insert:(r:InsertResult) => void;
+		update:(r:UpdateResult) => void;
+		ex: (ex:Error | any) => void;
 	}
 	interface Route {
 		(req: Request, res: Response, ...data:any[]): void;
@@ -151,9 +165,9 @@ class Daemon {
 			}
 		}).done();
 	}
-	collection(col:string) {
+	collection<T>(col:string) {
 		if (typeof col !== "string") throw new Error("need collectionName");
-		return this._db.then(function(db) { return db.collection(col); });
+		return this._db.then(function(db) { return db.collection<T>(col); });
 	}
 	session(options: Daemon.SessionOptions) {
 		function _session(opt: Daemon.SessionOptions) {
@@ -296,7 +310,7 @@ class Daemon {
 		return (<express.RequestHandler>function(req:Daemon.Request, res:Daemon.Response, next:Function) {
 			// 自动注入某些通用参数（排序、分页等）
 			req.col = self.collection.bind(self);
-			req.find = function find(col, query?, fields?, sort?, skip?, limit?) {
+			req.find = function find<T>(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				var $sort = req.query.$sort || req.body.$sort,
 					$skip = req.query.$skip || req.body.$skip || 0,
@@ -315,7 +329,7 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return self.collection(col).then(function(collection) {
+				return self.collection<T>(col).then(function(collection) {
 					var cursor = collection.find(query || {}, fields || $fields || {});
 					cursor.sort(sort || $sort);
 					cursor.skip(skip || $skip);
@@ -330,69 +344,69 @@ class Daemon {
 					]);
 				});
 			};
-			req._find = res.find = function response_find(r) {
-				if (Array.isArray(r) && r.length > 5)
+			req._find = res.find = function response_find<T>(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) {
+				if (Array.isArray(array) && array.length === 6 && typeof count === "undefined")
 					res.json({
-						 $array: r[0],
-						 $count: r[1],
-						  $sort: r[2],
-						  $skip: r[3],
-						 $limit: r[4],
-						$fields: r[5]
+						 $array: array[0],
+						 $count: array[1],
+						  $sort: array[2],
+						  $skip: array[3],
+						 $limit: array[4],
+						$fields: array[5]
 					});
 				else if (arguments.length > 5)
 					res.json({
-						 $array: arguments[0],
-						 $count: arguments[1],
-						  $sort: arguments[2],
-						  $skip: arguments[3],
-						 $limit: arguments[4],
-						$fields: arguments[5]
+						 $array: array,
+						 $count: count,
+						  $sort: sort,
+						  $skip: skip,
+						 $limit: limit,
+						$fields: fields
 					});
 				else
-					res.json(r);
+					res.json(array);
 			};
-			req.findOne = function findOne(col, query, fields) {
+			req.findOne = function findOne<T>(col:string, query:{}, fields?:{}) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				var $fields = req.query.$fields || req.body.$fields;
-				return self.collection(col).then(function(collection) {
+				return self.collection<T>(col).then(function(collection) {
 					return collection.findOne(query || {}, fields || $fields || {});
 				});
 			};
-			req._array = req._findOne = res.array = res.findOne = function response_one(r) {
+			req._array = req._findOne = res.array = res.findOne = function response_one<T>(r:T|T[]) {
 				res.json(r);
 			};
-			req.insert = function insert(col, op) {
+			req.insert = function insert(col:string, op:{}) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
 					return collection.insert(op);
 				});
 			};
-			req._insert = res.insert = function response_insert(r) {
+			req._insert = res.insert = function response_insert(r:{ ops:{}, result: { ok:number, n: number } }) {
 				if (r.result)
 					res.json({ insert: r.ops, ok: r.result.ok, n: r.result.n });
 				else
 					res.json(r);
 			};
-			req.save = function save(col, op) {
+			req.save = function save<T>(col:string, doc:T) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
-					return collection.save(op);
+				return self.collection<T>(col).then(function(collection) {
+					return collection.save(doc);
 				});
 			};
-			req.update = function update(col, query, op, options) {
+			req.update = function update(col:string, query:{}, op:{}, options:{}) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
 					return collection.update(query, op, options);
 				});
 			};
-			req.remove = function remove(col, query) {
+			req.remove = function remove(col:string, query:{}) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
 					return collection.remove(query);
 				});
 			};
-			req._remove = req._save = req._update = res.update = function response_update(r) {
+			req._remove = req._save = req._update = res.update = function response_update(r:{ result: { ok:number, n: number, nModified: number } }) {
 				if (r.result)
 					res.json({ ok: r.result.ok, nModified: r.result.nModified, n: r.result.n });
 				else
@@ -456,8 +470,8 @@ class Daemon {
 						next(); // 短路
 						return Q.reject(record);
 					}
-					return __db.collection("hybrid_authorization");
-				}).then(function(col:mp.Collection) {
+					return __db.collection<{}>("hybrid_authorization");
+				}).then(function(col:mp.Collection<{}>) {
 					return col.findOne({ auth: auth });
 				}).then(function(record) {
 					if (record) {

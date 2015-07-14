@@ -41,7 +41,7 @@ declare module "mongodb-promise" {
 
     // public collection(collectionName: string): Collection;
     // public collection(collectionName: string, callback: (err: Error, collection: Collection) => void ): Collection;
-    public collection(collectionName: string, options?: mongodb.MongoCollectionOptions): Q.Promise<Collection>;
+    public collection<T>(collectionName: string, options?: mongodb.MongoCollectionOptions): Q.Promise<Collection<T>>;
 
     // public collections(callback: (err: Error, collections: Collection[]) => void ): void;
     // public eval(code: any, parameters: any[], options?: any, callback?: (err: Error, result: any) => void ): void;
@@ -272,7 +272,7 @@ declare module "mongodb-promise" {
   //   };
   // }
 
-  export interface Collection {
+  export interface Collection<T> {
   //   new (db: Db, collectionName: string, pkFactory?: Object, options?: CollectionCreateOptions): Collection; // is this right?
 
   //   insert(query: any, callback: (err: Error, result: any) => void): void;
@@ -284,7 +284,7 @@ declare module "mongodb-promise" {
   //   rename(newName: String, callback?: (err: Error, result: any) => void): void;
 
   //   save(doc: any, callback : (err: Error, result: any) => void): void;
-    save(doc: any, options?: { safe: any; }): Q.Promise<any>;
+    save(doc: T, options?: { safe: any; }): Q.Promise<any>;
 
   //   update(selector: Object, document: any, callback?: (err: Error, result: any) => void): void;
     update(selector: Object, document: any, options?: { safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }): Q.Promise<any>;
@@ -310,7 +310,7 @@ declare module "mongodb-promise" {
   //   find(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: Cursor) => void): Cursor;
   //   find(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: Cursor) => void): Cursor;
   //   find(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: Cursor) => void): Cursor;
-    find(selector: Object, fields?: any, skip?: number, limit?: number, timeout?: number): Cursor;
+    find(selector: Object, fields?: any, skip?: number, limit?: number, timeout?: number): Cursor<T>;
 
   //   findOne(callback?: (err: Error, result: any) => void): Cursor;
   //   findOne(selector: Object, callback?: (err: Error, result: any) => void): Cursor;
@@ -318,7 +318,7 @@ declare module "mongodb-promise" {
   //   findOne(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: any) => void): Cursor;
   //   findOne(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: any) => void): Cursor;
   //   findOne(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: any) => void): Cursor;
-    findOne(selector: Object, fields?: any, skip?: number, limit?: number, timeout?: number): Q.Promise<any>;
+    findOne(selector: Object, fields?: any, skip?: number, limit?: number, timeout?: number): Q.Promise<T>;
 
   //   createIndex(fieldOrSpec: any, callback: (err: Error, indexName: string) => void): void;
   //   createIndex(fieldOrSpec: any, options: IndexOptions, callback: (err: Error, indexName: string) => void): void;
@@ -381,20 +381,20 @@ declare module "mongodb-promise" {
 
   // // Class documentation : http://mongodb.github.io/node-mongodb-native/api-generated/cursor.html
   // // Last update: doc. version 1.3.13 (29.08.2013)
-  export interface Cursor extends Q.Promise<any> {
+  export interface Cursor<T> {
   //   // INTERNAL TYPE
   //   // constructor (db: Db, collection: Collection, selector, fields, skip, limit, sort, hint, explain, snapshot, timeout, tailable, batchSize, slaveOk, raw, read, returnKey, maxScan, min, max, showDiskLoc, comment, awaitdata, numberOfRetries, dbName, tailableRetryInterval, exhaust, partial);
   //   // constructor(db: Db, collection: Collection, selector, fields, options);
 
   //   rewind() : Cursor;
-     toArray() : Q.Promise<any[]>;
-     each(callback: (item: any) => void) : Q.Promise<void>;
+     toArray() : Q.Promise<T[]>;
+     each(callback: (item: T) => void) : Q.Promise<void>;
      count(applySkipLimit?: boolean) : Q.Promise<number>;
 
-     sort(keyOrList: any): Cursor;
-     limit(limit: number): Cursor;
+     sort(keyOrList: any): Cursor<T>;
+     limit(limit: number): Cursor<T>;
   //   setReadPreference(preference: string, callback?: Function): Cursor;
-     skip(skip: number): Cursor;
+     skip(skip: number): Cursor<T>;
   //   batchSize(batchSize: number, callback?: (err: Error, result: any) => void): Cursor;
 
   //   nextObject(callback: (err: Error, doc: any) => void) : void;
