@@ -68,8 +68,8 @@ declare module Daemon {
 }
 
 class Daemon {
-	static r(route: Daemon.Route) { return route; };
-	static conf:any;
+	static r(route: Daemon.Route) { return route; }
+	static conf:any
 	static CGI(basepath: string, conf: any) {
 		var domainCache:any = {}; // 执行域缓存
 		this.conf = conf;
@@ -95,10 +95,12 @@ class Daemon {
 				}
 			});
 		}
+		if (!/^\//.test(basepath)) {
+			basepath = path.join(path.dirname(module.parent.filename), basepath); // 使用父模块的相对路径
+		}
 		return (<express.RequestHandler>function _CGI(req, res, next) {
 			var absolute = path.join(basepath, req.path);
 			if (absolute.indexOf(basepath) != 0) return res.status(500).send({ error: "out of jail" });
-			absolute = "./" + absolute;
 			try {
 				var filename = require.resolve(absolute);
 			} catch (e) { return res.status(404).send({ error: "module not found" }); }
@@ -116,7 +118,7 @@ class Daemon {
 			_exec(require(absolute), req, res, next);
 			console.log("load " + filename);
 		});
-	};
+	}
 	_db: Q.Promise<mp.Db>; // 打开的mongodb的promise
 	constructor(connection_string: string, username?: string, password?: string) {
 		if (username && password) {
@@ -148,11 +150,11 @@ class Daemon {
 				defer.resolve(db);
 			}
 		}).done();
-	};
+	}
 	collection(col:string) {
 		if (typeof col !== "string") throw new Error("need collectionName");
 		return this._db.then(function(db) { return db.collection(col); });
-	};
+	}
 	session(options: Daemon.SessionOptions) {
 		function _session(opt: Daemon.SessionOptions) {
 			return session({
@@ -180,7 +182,7 @@ class Daemon {
 		return (function() {
 			if (stub) { stub.apply(this, [].slice.apply(arguments)); }
 		});
-	};
+	}
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
 		var self = this;
 		// 替换express的json响应
@@ -413,22 +415,22 @@ class Daemon {
 			};
 			next();
 		});
-	};
+	}
 	_moment(exp:any) { // 将输入的参数转化为moment类型的值
 		if (/^\d+$/.test(exp)) exp = parseInt(exp);
 		exp = moment(exp);
 		return exp.isValid() ? exp : null;
-	};
+	}
 	// 混合式验证
 	whitelist: string[]; // IP 白名单
 	whitelist_add(ip:string) {
 		this.whitelist.push(ip);
-	};
+	}
 	basic: string[]; // 用户名密码
 	basic_add(username:string, password:string) {
 		this.basic.push("Basic " + new Buffer(username + ":" + password).toString("base64"));
-	};
-	realm = "Authentication Zone";
+	}
+	realm = "Authentication Zone"
 	hybrid_auth(realm:string) {
 		var self = this;
 		if (realm) { self.realm = realm; }
@@ -468,7 +470,7 @@ class Daemon {
 				_reject();
 			}
 		});
-	};
+	}
 }
 
 export = Daemon;
