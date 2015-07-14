@@ -25,49 +25,50 @@ import DBRef = mongodb.DBRef;
 // moment
 import moment = require("moment");
 
-interface SessionOptions {
-	db: mongodb.Db;
-	ttl: number;
-	touchAfter: number; // 每小时自动更新会话一次
-	/// 会话密钥
-	sessionSecret: string;
-	stringify: boolean;
-}
+declare module Daemon {
+	interface SessionOptions {
+		db: mongodb.Db;
+		ttl: number;
+		touchAfter: number; // 自动更新会话
+		sessionSecret: string; // 会话密钥
+		stringify: boolean;
+	}
 
-interface Request extends express.Request {
-	col:(collectionName:string) => Q.Promise<mp.Collection>;
-	find:(col:string, query?:{}, fields?:{}, sort?:{}|string, skip?:number, limit?:number) => Q.Promise<any[]>;
-	_find:(r:any) => any;
-	findOne:(col:string, query:any, fields?:any) => Q.Promise<any>;
-	_findOne:(r:any) => any;
-	_array:(r:any) => any;
-	insert:(col:string, op:any) => Q.Promise<any>;
-	_insert:(r:any) => any;
-	save:(col:string, op:any) => Q.Promise<any>;
-	_save:(r:any) => any;
-	update:(col:string, query:any, op:any, options?:any) => Q.Promise<any>;
-	_update:(r:any) => any;
-	remove:(col:string, op:any) => Q.Promise<any>;
-	_remove:(r:any) => any;
-	_ex: (ex:Error | any) => any;
+	interface Request extends express.Request {
+		col:(collectionName:string) => Q.Promise<mp.Collection>;
+		find:(col:string, query?:{}, fields?:{}, sort?:{}|string, skip?:number, limit?:number) => Q.Promise<any[]>;
+		_find:(r:any) => any;
+		findOne:(col:string, query:any, fields?:any) => Q.Promise<any>;
+		_findOne:(r:any) => any;
+		_array:(r:any) => any;
+		insert:(col:string, op:any) => Q.Promise<any>;
+		_insert:(r:any) => any;
+		save:(col:string, op:any) => Q.Promise<any>;
+		_save:(r:any) => any;
+		update:(col:string, query:any, op:any, options?:any) => Q.Promise<any>;
+		_update:(r:any) => any;
+		remove:(col:string, op:any) => Q.Promise<any>;
+		_remove:(r:any) => any;
+		_ex: (ex:Error | any) => any;
 	
-	_export:(data:any, name:string[]) => void;
-	_exportInt:(data:any, name:string[]) => void;
-}
-interface Response extends express.Response {
-	find:(r:any) => any;
-	findOne:(r:any) => any;
-	array:(r:any) => any;
-	insert:(r:any) => any;
-	update:(r:any) => any;
-	ex: (ex:Error | any) => any;
-}
-
-declare module daemon {
-	
+		_export:(data:any, name:string[]) => void;
+		_exportInt:(data:any, name:string[]) => void;
+	}
+	interface Response extends express.Response {
+		find:(r:any) => any;
+		findOne:(r:any) => any;
+		array:(r:any) => any;
+		insert:(r:any) => any;
+		update:(r:any) => any;
+		ex: (ex:Error | any) => any;
+	}
+	interface Route {
+		(req: Request, res: Response, ...data:any[]): void;
+	}
 }
 
 class Daemon {
+	static r(route: Daemon.Route) { return route; };
 	static conf:any;
 	static CGI(basepath: string, conf: any) {
 		var domainCache:any = {}; // 执行域缓存
@@ -125,7 +126,7 @@ class Daemon {
 		}
 		var defer = Q.defer<mp.Db>();
 		this._db = defer.promise;
-	
+
 		MongoClient.connect(connection_string, {
 			native_parser: !!mongodb.BSONNative,
 			safe: true
@@ -150,10 +151,10 @@ class Daemon {
 	};
 	collection(col:string) {
 		if (typeof col !== "string") throw new Error("need collectionName");
-		return this._db.then(function(db) { return db.collection(col); });		
+		return this._db.then(function(db) { return db.collection(col); });
 	};
-	session(options: SessionOptions) {
-		function _session(opt: SessionOptions) {
+	session(options: Daemon.SessionOptions) {
+		function _session(opt: Daemon.SessionOptions) {
 			return session({
 				secret: opt.sessionSecret,
 				resave: true,
@@ -162,7 +163,7 @@ class Daemon {
 				cookie: { maxAge: opt.ttl * 1000 } // 会话有效期为30天
 			});
 		}
-		var opt: SessionOptions = {
+		var opt: Daemon.SessionOptions = {
 			db: null,
 			ttl: 30 * 24 * 60 * 60,
 			touchAfter: 3600, // 每小时自动更新会话一次
@@ -290,7 +291,7 @@ class Daemon {
 				_json.apply(vo, args);
 			}
 		}
-		return (<express.RequestHandler>function(req:Request, res:Response, next:Function) {
+		return (<express.RequestHandler>function(req:Daemon.Request, res:Daemon.Response, next:Function) {
 			// 自动注入某些通用参数（排序、分页等）
 			req.col = self.collection.bind(self);
 			req.find = function find(col, query?, fields?, sort?, skip?, limit?) {
