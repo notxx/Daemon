@@ -83,7 +83,7 @@ declare module Daemon {
 
 class Daemon {
 	static r(route: Daemon.Route) { return route; }
-	static conf:any
+	private static conf:any
 	static CGI(basepath: string, conf: any) {
 		var domainCache:any = {}; // 执行域缓存
 		this.conf = conf;
@@ -133,7 +133,7 @@ class Daemon {
 			console.log("load " + filename);
 		});
 	}
-	_db: Q.Promise<mp.Db>; // 打开的mongodb的promise
+	private _db: Q.Promise<mp.Db>; // 打开的mongodb的promise
 	constructor(connection_string: string, username?: string, password?: string) {
 		if (username && password) {
 			console.log("connect_mongodb(" + [connection_string, username, "********"].join(", ") + ")");
@@ -430,17 +430,23 @@ class Daemon {
 			next();
 		});
 	}
-	_moment(exp:any) { // 将输入的参数转化为moment类型的值
-		if (/^\d+$/.test(exp)) exp = parseInt(exp);
-		exp = moment(exp);
-		return exp.isValid() ? exp : null;
+	_moment(exp:string|number): moment.Moment { // 将输入的参数转化为moment类型的值
+		var exp0: number, m:moment.Moment;
+		if (typeof exp === 'string' && /^\d+$/.test(exp))
+			exp0 = parseInt(exp);
+		else if (typeof exp === 'number')
+			exp0 = exp;
+		else
+			return null;
+		m = moment(exp);
+		return m.isValid() ? m : null;
 	}
 	// 混合式验证
-	whitelist: string[]; // IP 白名单
+	private whitelist: string[] // IP 白名单
 	whitelist_add(ip:string) {
 		this.whitelist.push(ip);
 	}
-	basic: string[]; // 用户名密码
+	private basic: string[] // 用户名密码
 	basic_add(username:string, password:string) {
 		this.basic.push("Basic " + new Buffer(username + ":" + password).toString("base64"));
 	}
