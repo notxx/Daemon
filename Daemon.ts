@@ -55,13 +55,13 @@ declare module Daemon {
 		findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
 		_findOne:<T>(r:T) => void;
 		_array:<T>(r:T[]) => void;
-		insert:(col:string, op:any) => Q.Promise<InsertResult>;
+		insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Q.Promise<InsertResult>;
 		_insert:(r:InsertResult) => void;
-		save:<T>(col:string, op:T) => Q.Promise<UpdateResult>;
+		save:<T>(col:string, op:T, options?:{ safe: any }) => Q.Promise<UpdateResult>;
 		_save:<T>(r:UpdateResult) => void;
-		update:(col:string, query:any, op:any, options?:any) => Q.Promise<UpdateResult>;
+		update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Q.Promise<UpdateResult>;
 		_update:(r:UpdateResult) => void;
-		remove:(col:string, op:any) => Q.Promise<UpdateResult>;
+		remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Q.Promise<UpdateResult>;
 		_remove:(r:UpdateResult) => void;
 		_ex: (ex:Error | {}) => void;
 	
@@ -376,10 +376,10 @@ class Daemon {
 			req._array = req._findOne = res.array = res.findOne = function response_one<T>(r:T|T[]) {
 				res.json(r);
 			};
-			req.insert = function insert(col:string, op:{}) {
+			req.insert = function insert(col, op, options) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
-					return collection.insert(op);
+					return collection.insert(op, options);
 				});
 			};
 			req._insert = res.insert = function response_insert(r:{ ops:{}, result: { ok:number, n: number } }) {
@@ -388,22 +388,22 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.save = function save<T>(col:string, doc:T) {
+			req.save = function save<T>(col:string, op:T, options?:{ safe: any }) {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection<T>(col).then(function(collection) {
-					return collection.save(doc);
+				return self.collection(col).then(function(collection) {
+					return collection.save(op, options);
 				});
 			};
-			req.update = function update(col:string, query:{}, op:{}, options:{}) {
+			req.update = function update(col:string, query:{}, op:{}, options?:{ safe: any }) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
 					return collection.update(query, op, options);
 				});
 			};
-			req.remove = function remove(col:string, query:{}) {
+			req.remove = function remove(col, query, options) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
-					return collection.remove(query);
+					return collection.remove(query, options);
 				});
 			};
 			req._remove = req._save = req._update = res.update = function response_update(r:{ result: { ok:number, n: number, nModified: number } }) {

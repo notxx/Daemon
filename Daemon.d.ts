@@ -38,13 +38,13 @@ declare module "Daemon" {
 			findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
 			_findOne:<T>(r:T) => void;
 			_array:<T>(r:T[]) => void;
-			insert:(col:string, op:any) => Q.Promise<InsertResult>;
+			insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Q.Promise<InsertResult>;
 			_insert:(r:InsertResult) => void;
-			save:<T>(col:string, op:T) => Q.Promise<UpdateResult>;
+			save:<T>(col:string, op:T, options?:{ safe: any }) => Q.Promise<UpdateResult>;
 			_save:<T>(r:UpdateResult) => void;
-			update:(col:string, query:any, op:any, options?:any) => Q.Promise<UpdateResult>;
+			update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Q.Promise<UpdateResult>;
 			_update:(r:UpdateResult) => void;
-			remove:(col:string, op:any) => Q.Promise<UpdateResult>;
+			remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Q.Promise<UpdateResult>;
 			_remove:(r:UpdateResult) => void;
 			_ex: (ex:Error | {}) => void;
 		
