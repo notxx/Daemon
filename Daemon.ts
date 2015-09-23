@@ -17,9 +17,8 @@ import serveStatic = require('serve-static');
 
 // mongodb & promise
 import Q = require("q");
-import mp = require("mongodb-promise");
-import MongoClient = mp.MongoClient;
 import mongodb = require("mongodb");
+import MongoClient = mongodb.MongoClient;
 import ObjectID = mongodb.ObjectID;
 import DBRef = mongodb.DBRef;
 // moment
@@ -49,7 +48,7 @@ declare module Daemon {
 		ops: {}
 	}
 	interface Request extends express.Request {
-		col:<T>(collectionName:string) => Q.Promise<mp.Collection<T>>;
+		col:<T>(collectionName:string) => Q.Promise<mongodb.Collection<T>>;
 		find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Q.Promise<any[]>;
 		_find:<T>(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) => void;
 		findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
@@ -133,20 +132,21 @@ class Daemon {
 			console.log("load " + filename);
 		});
 	}
-	private _db: Q.Promise<mp.Db>; // 打开的mongodb的promise
+	private _db: Q.Promise<mongodb.Db>; // 打开的mongodb的promise
 	constructor(connection_string: string, username?: string, password?: string) {
 		if (username && password) {
 			console.log("connect_mongodb(" + [connection_string, username, "********"].join(", ") + ")");
 		} else {
 			console.log("connect_mongodb(" + connection_string + ")");
 		}
-		var defer = Q.defer<mp.Db>();
+		var defer = Q.defer<mongodb.Db>();
 		this._db = defer.promise;
 
 		MongoClient.connect(connection_string, {
+			promiseLibrary: Q.Promise,
 			native_parser: !!mongodb.BSONNative,
 			safe: true
-		}).then(function(db:mp.Db) {
+		}).then(function(db:mongodb.Db) {
 			if (username && password) {
 				db.authenticate(username, password)
 				.then(function(result) {
@@ -190,7 +190,7 @@ class Daemon {
 		if (opt.db) { return _session(opt); }
 		var stub:express.RequestHandler = null;
 		this._db.then(function(db) {
-			opt.db = db._db;
+			opt.db = db;
 			stub = _session(opt);
 		});
 		return (function() {
@@ -465,7 +465,7 @@ class Daemon {
 					|| self.basic.indexOf(auth) >= 0) { // 用户名密码
 				next();
 			} else if (self._db) {
-				var __db: mp.Db;
+				var __db: mongodb.Db;
 				self._db.then(function(db) {
 					__db = db;
 					return __db.collection("hybrid_ip_whitelist");
@@ -477,7 +477,7 @@ class Daemon {
 						return Q.reject(record);
 					}
 					return __db.collection<{}>("hybrid_authorization");
-				}).then(function(col:mp.Collection<{}>) {
+				}).then(function(col:mongodb.Collection<{}>) {
 					return col.findOne({ auth: auth });
 				}).then(function(record) {
 					if (record) {

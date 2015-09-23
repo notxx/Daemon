@@ -13,12 +13,19 @@ declare module "mongodb" {
   }
   
   module m {
+    export interface Promise<T> {
+      then<U>(onFulfill?: (value: T) => U | Promise<U>, onReject?: (error: any) => U | Promise<U>): Promise<U>;
+      done(onFulfill?: (value: T) => void, onReject?: (error: any) => void): void;
+    }
+    
     // Class documentation : http://mongodb.github.io/node-mongodb-native/api-generated/mongoclient.html
-    export class MongoClient{
+    export class MongoClient {
       constructor(serverConfig: any, options: any);
   
       static connect(uri: string, options: any, callback: (err: Error, db: Db) => void): void;
       static connect(uri: string, callback: (err: Error, db: Db) => void): void;
+      static connect(uri: string, options: any): Promise<Db>;
+      static connect(uri: string): Promise<Db>;
     }
   
     // Class documentation : http://mongodb.github.io/node-mongodb-native/api-generated/server.html
@@ -40,19 +47,20 @@ declare module "mongodb" {
       public collectionsInfo(collectionName: string, callback?: (err: Error, result: any) => void ): void;
       public collectionNames(collectionName: string, options: any, callback?: (err: Error, result: any) => void ): void;
   
-      public collection(collectionName: string): Collection;
-      public collection(collectionName: string, callback: (err: Error, collection: Collection) => void ): Collection;
-      public collection(collectionName: string, options: MongoCollectionOptions, callback: (err: Error, collection: Collection) => void ): Collection;
+      public collection<T>(collectionName: string, callback?: (err: Error, collection: Collection<T>) => void ): Collection<T>;
+      public collection<T>(collectionName: string, options: MongoCollectionOptions, callback?: (err: Error, collection: Collection<T>) => void ): Collection<T>;
   
-      public collections(callback: (err: Error, collections: Collection[]) => void ): void;
+      public collections(callback: (err: Error, collections: Collection<any>[]) => void ): void;
       public eval(code: any, parameters: any[], options?: any, callback?: (err: Error, result: any) => void ): void;
       //public dereference(dbRef: DbRef, callback: (err: Error, result: any) => void): void;
   
       public logout(options: any, callback?: (err: Error, result: any) => void ): void;
       public logout(callback: (err: Error, result: any) => void ): void;
   
-      public authenticate(userName: string, password: string, callback?: (err: Error, result: any) => void ): void;
-      public authenticate(userName: string, password: string, options: any, callback?: (err: Error, result: any) => void ): void;
+      public authenticate(userName: string, password: string, callback: (err: Error, result: any) => void ): void;
+      public authenticate(userName: string, password: string, options: any, callback: (err: Error, result: any) => void ): void;
+      public authenticate(userName: string, password: string): Promise<any>;
+      public authenticate(userName: string, password: string, options: any): Promise<any>;
   
       public addUser(username: string, password: string, callback?: (err: Error, result: any) => void ): void;
       public addUser(username: string, password: string, options: any, callback?: (err: Error, result: any) => void ): void;
@@ -60,7 +68,7 @@ declare module "mongodb" {
       public removeUser(username: string, callback?: (err: Error, result: any) => void ): void;
       public removeUser(username: string, options: any, callback?: (err: Error, result: any) => void ): void;
   
-      public createCollection(collectionName: string, callback?: (err: Error, result: Collection) => void ): void;
+      public createCollection(collectionName: string, callback?: (err: Error, result: Collection<any>) => void ): void;
       public createCollection(collectionName: string, options: CollectionCreateOptions, callback?: (err: Error, result: any) => void ): void;
   
       public command(selector: Object, callback?: (err: Error, result: any) => void ): void;
@@ -302,22 +310,22 @@ declare module "mongodb" {
     }
   
     // Documentation : http://mongodb.github.io/node-mongodb-native/api-generated/collection.html
-    export interface Collection {
-      new (db: Db, collectionName: string, pkFactory?: Object, options?: CollectionCreateOptions): Collection; // is this right?
+    export interface Collection<T> {
+      new <T>(db: Db, collectionName: string, pkFactory?: Object, options?: CollectionCreateOptions): Collection<T>; // is this right?
   
-      insert(query: any, callback: (err: Error, result: any) => void): void;
-      insert(query: any, options: { safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }, callback: (err: Error, result: any) => void): void;
+      insert(query: T, callback?: (err: Error, result: any) => void): Promise<any>;
+      insert(query: T, options: { safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
   
-      remove(selector: Object, callback?: (err: Error, result: any) => void): void;
-      remove(selector: Object, options: { safe?: any; single?: boolean; }, callback?: (err: Error, result: any) => void): void;
+      remove(selector: Object, callback?: (err: Error, result: any) => void): Promise<any>;
+      remove(selector: Object, options: { safe?: any; single?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
   
       rename(newName: String, callback?: (err: Error, result: any) => void): void;
   
-      save(doc: any, callback : (err: Error, result: any) => void): void;
-      save(doc: any, options: { safe: any; }, callback : (err: Error, result: any) => void): void;
+      save(doc: T, callback? : (err: Error, result: any) => void): Promise<any>;
+      save(doc: T, options: { safe: any; }, callback? : (err: Error, result: any) => void): Promise<any>;
   
-      update(selector: Object, document: any, callback?: (err: Error, result: any) => void): void;
-      update(selector: Object, document: any, options: { safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }, callback: (err: Error, result: any) => void): void;
+      update(selector: Object, document: any, callback?: (err: Error, result: any) => void): Promise<any>;
+      update(selector: Object, document: any, options: { safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
   
       distinct(key: string, query: Object, callback: (err: Error, result: any) => void): void;
       distinct(key: string, query: Object, options: { readPreference: string; }, callback: (err: Error, result: any) => void): void;
@@ -334,21 +342,21 @@ declare module "mongodb" {
       findAndRemove(query : Object, sort? : any[], callback?: (err: Error, result: any) => void): void;
       findAndRemove(query : Object, sort? : any[], options?: { safe: any; }, callback?: (err: Error, result: any) => void): void;
   
-      find(callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, fields: any, callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: Cursor) => void): Cursor;
-      find(selector: Object, fields: any, skip: number, limit: number, timeout: number, callback?: (err: Error, result: Cursor) => void): Cursor;
+      find(callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, fields: any, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
+      find(selector: Object, fields: any, skip: number, limit: number, timeout: number, callback?: (err: Error, result: Cursor<T>) => void): Cursor<T>;
   
-      findOne(callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, fields: any, callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: any) => void): Cursor;
-      findOne(selector: Object, fields: any, skip: number, limit: number, timeout: number, callback?: (err: Error, result: any) => void): Cursor;
+      findOne(callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, fields: any, callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, options: CollectionFindOptions, callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, fields: any, options: CollectionFindOptions, callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, fields: any, skip: number, limit: number, callback?: (err: Error, result: T) => void): Promise<T>;
+      findOne(selector: Object, fields: any, skip: number, limit: number, timeout: number, callback?: (err: Error, result: T) => void): Promise<T>;
   
       createIndex(fieldOrSpec: any, callback: (err: Error, indexName: string) => void): void;
       createIndex(fieldOrSpec: any, options: IndexOptions, callback: (err: Error, indexName: string) => void): void;
@@ -411,31 +419,31 @@ declare module "mongodb" {
   
     // Class documentation : http://mongodb.github.io/node-mongodb-native/api-generated/cursor.html
     // Last update: doc. version 1.3.13 (29.08.2013)
-    export class Cursor {
+    export class Cursor<T> {
       // INTERNAL TYPE
       // constructor (db: Db, collection: Collection, selector, fields, skip, limit, sort, hint, explain, snapshot, timeout, tailable, batchSize, slaveOk, raw, read, returnKey, maxScan, min, max, showDiskLoc, comment, awaitdata, numberOfRetries, dbName, tailableRetryInterval, exhaust, partial);
       // constructor(db: Db, collection: Collection, selector, fields, options);
   
-      rewind() : Cursor;
-      toArray(callback: (err: Error, results: any[]) => any) : void;
-      each(callback: (err: Error, item: any) => void) : void;
-      count(applySkipLimit: boolean, callback: (err: Error, count: number) => void) : void;
+      rewind() : Cursor<T>;
+      toArray(callback?: (err: Error, results: T[]) => any) : Promise<T[]>;
+      each(callback?: (err: Error, item: T) => void) : Promise<void>;
+      count(applySkipLimit?: boolean, callback?: (err: Error, count: number) => void) : Promise<number>;
   
-      sort(keyOrList: any, callback? : (err: Error, result: any) => void): Cursor;
+      sort(keyOrList: any, callback? : (err: Error, result: any) => void): Cursor<T>;
   
       // this determines how the results are sorted. "asc", "ascending" or 1 for asceding order while "desc", "desceding or -1 for descending order. Note that the strings are case insensitive.
-      sort(keyOrList: String, direction : string, callback : (err: Error, result: any) => void): Cursor;
-      limit(limit: number, callback?: (err: Error, result: any) => void): Cursor;
-      setReadPreference(preference: string, callback?: Function): Cursor;
-      skip(skip: number, callback?: (err: Error, result: any) => void): Cursor;
-      batchSize(batchSize: number, callback?: (err: Error, result: any) => void): Cursor;
+      sort(keyOrList: String, direction : string, callback : (err: Error, result: any) => void): Cursor<T>;
+      limit(limit: number, callback?: (err: Error, result: any) => void): Cursor<T>;
+      setReadPreference(preference: string, callback?: Function): Cursor<T>;
+      skip(skip: number, callback?: (err: Error, result: any) => void): Cursor<T>;
+      batchSize(batchSize: number, callback?: (err: Error, result: any) => void): Cursor<T>;
   
-      nextObject(callback: (err: Error, doc: any) => void) : void;
-      explain(callback: (err: Error, result: any) => void) : void;
+      nextObject(callback?: (err: Error, doc: T) => void) : Promise<T>;
+      explain(callback?: (err: Error, result: any) => void) : Promise<any>;
   
       stream(): CursorStream;
   
-      close(callback: (err: Error, result: any) => void) : void;
+      close(callback?: (err: Error, result: any) => void) : Promise<any>;
       isClosed(): boolean;
   
       public static INIT: number;
@@ -447,7 +455,7 @@ declare module "mongodb" {
     // Class documentation : http://mongodb.github.io/node-mongodb-native/api-generated/cursorstream.html
     // Last update: doc. version 1.3.13 (29.08.2013)
     export class CursorStream {
-      constructor(cursor: Cursor);
+      constructor(cursor: Cursor<any>);
   
       public pause(): any;
       public resume(): any;

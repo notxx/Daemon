@@ -8,6 +8,5 @@
 /// <reference path="connect-mongo/connect-mongo.d.ts" />
 /// <reference path="q/Q.d.ts" />
 /// <reference path="mongodb/mongodb.d.ts" />
-/// <reference path="mongodb-promise/mongodb-promise.d.ts" />
 /// <reference path="moment/moment-node.d.ts" />
 /// <reference path="moment/moment.d.ts" />
