@@ -336,8 +336,8 @@ declare module "mongodb" {
   
       drop(callback?: (err: Error, result: any) => void): void;
   
-      findAndModify(query: Object, sort: any[], doc: Object, callback: (err: Error, result: any) => void): void;
-      findAndModify(query: Object, sort: any[], doc: Object, options: { safe?: any; remove?: boolean; upsert?: boolean; new?: boolean; }, callback: (err: Error, result: any) => void): void;
+      findAndModify(query: Object, sort: any[], doc: Object, callback?: (err: Error, result: any) => void): Promise<any>;
+      findAndModify(query: Object, sort: any[], doc: Object, options: { safe?: any; remove?: boolean; upsert?: boolean; new?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
   
       findAndRemove(query : Object, sort? : any[], callback?: (err: Error, result: any) => void): void;
       findAndRemove(query : Object, sort? : any[], options?: { safe: any; }, callback?: (err: Error, result: any) => void): void;

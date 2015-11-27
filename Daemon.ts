@@ -62,6 +62,7 @@ declare module Daemon {
 		_update:(r:UpdateResult) => void;
 		remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Q.Promise<UpdateResult>;
 		_remove:(r:UpdateResult) => void;
+		findAndModify:(col:string, query:any, sort:any[], op:any, options?:{ safe?: any; remove?: boolean; upsert?: boolean; new?: boolean; }) => Q.Promise<UpdateResult>;
 		_ex: (ex:Error | {}) => void;
 	
 		_export:(data:any, name:string[]) => void;
@@ -225,7 +226,7 @@ class Daemon {
 				} else if (con === DBRef) {
 					var defer = Q.defer();
 					self.collection(value.namespace).then(function(col) {
-						var columns = { name: 1 };
+						var columns:any = { name: 1 };
 						switch (value.namespace) {
 						case 'operator':
 							columns = { name: 1, id: 1, mobile: 1, phone: 1 };
@@ -394,7 +395,7 @@ class Daemon {
 					return collection.save(op, options);
 				});
 			};
-			req.update = function update(col:string, query:{}, op:{}, options?:{ safe: any }) {
+			req.update = function update(col, query, op, options) {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return self.collection(col).then(function(collection) {
 					return collection.update(query, op, options);
@@ -412,6 +413,16 @@ class Daemon {
 				else
 					res.json(r);
 			};
+			req.findAndModify = function findAndModify(col, query, sort, op, options) {
+				if (typeof col !== "string") throw new Error("need collectionName");
+				return self.collection(col).then(function(collection) {
+					return collection.findAndModify(query, sort, op, options);
+				});
+			};
+			// 匹配输出的方便方法
+			req._ex = res.ex = function response_ex(ex) {
+				res.status(500).json(ex.message ? { message: ex.message, stack: ex.stack } : { ex: ex });
+			};
 			// 将参数复制到对象
 			req._export = function request_export(data, names) {
 				names.forEach(function(name) {
@@ -422,10 +433,6 @@ class Daemon {
 				names.forEach(function(name) {
 					data[name] = parseInt(req.query[name] || req.body[name]);
 				})
-			};
-			// 匹配输出的方便方法
-			req._ex = res.ex = function response_ex(ex) {
-				res.status(500).json({ message: ex.message, stack: ex.stack });
 			};
 			next();
 		});
