@@ -30,6 +30,7 @@ declare module "express" {
     function e(): e.Express;
     module e {
         export class response {
+            static json(status: number, body?: any, options?: any): any;
             static json(status: number, body?: any): any;
             static json(body: any): any;
         }
