@@ -120,7 +120,7 @@ class Daemon {
 		}).done();
 	}
 	handlers(handlers:{}) {
-		this._handlers = util._extend({}, handlers);
+		this._handlers = extend({}, handlers);
 	}
 	CGI(basepath: string, conf: any) {
 		var self = this,
@@ -265,7 +265,7 @@ class Daemon {
 			};
 			function replace(indent: number, path: Array<string>, obj: any) { // 决定哪些值应予展开的函数
 				//console.log("replace", indent, path.join('.'));
-				if (typeof obj !== "object" || !obj || indent <= 0) { return obj; }
+				if (typeof obj !== "object" || !obj || indent <= 0) { return Q(obj); }
 				if (!path) path = [];
 				var promises = Array<any>(),
 					defer = Q.defer<any>();
@@ -309,11 +309,11 @@ class Daemon {
 				}
 				return defer.promise;
 			}
-			options = util._extend({
+			options = extend({
 				indent: 5,
 				fields: {},
 				fieldsDefault: { name: 1 }
-			}, options);
+			}, resp.$json$options, options);
 			if (typeof body === 'object') {
 				replace(options.indent, [], body).then(function (value:any) {
 					if (status)
