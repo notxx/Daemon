@@ -47,6 +47,12 @@ declare module Daemon {
 	interface InsertResult extends UpdateResult {
 		ops: {}
 	}
+	interface InsertManyResult {
+		insertedCount: number;
+		insertedIds: any[];
+		ops: any[];
+		result: { ok: number; n: number; }
+	}
 	interface Request extends express.Request {
 		col:<T>(collectionName:string) => Q.Promise<mongodb.Collection<T>>;
 		$find:any;
@@ -57,6 +63,7 @@ declare module Daemon {
 		_array:<T>(r:T[]) => void;
 		insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Q.Promise<InsertResult>;
 		_insert:(r:InsertResult) => void;
+		insertMany:(col:string, docs:any[], options?:{ w?: number|string; wtimeout?: number; j?: boolean; serializeFunctions?: boolean; forceServerObjectId?: boolean; }) => Q.Promise<InsertManyResult>;
 		save:<T>(col:string, op:T, options?:{ safe: any }) => Q.Promise<UpdateResult>;
 		_save:<T>(r:UpdateResult) => void;
 		update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Q.Promise<UpdateResult>;
@@ -74,6 +81,7 @@ declare module Daemon {
 		findOne:<T>(r:T) => void;
 		array:<T>(r:T[]) => void;
 		insert:(r:InsertResult) => void;
+		insertMany:(r:any) => void;
 		update:(r:UpdateResult) => void;
 		ex: (ex:Error | any) => void;
 	}
@@ -407,6 +415,18 @@ class Daemon {
 				if (r.result)
 					res.json({ insert: r.ops, ok: r.result.ok, n: r.result.n });
 				else
+					res.json(r);
+			};
+			req.insertMany = function insertMany(col, op, options) {
+				if (typeof col !== "string") throw new Error("need collectionName");
+				return self.collection(col).then(function(collection) {
+					return collection.insertMany(op, options);
+				});
+			};
+			res.insertMany = function response_insertMany(r:Daemon.InsertManyResult) {
+				//if (r.result)
+				//	res.json({ insert: r.ops, ok: r.result.ok, n: r.result.n });
+				//else
 					res.json(r);
 			};
 			req.save = function save<T>(col:string, op:T, options?:{ safe: any }) {

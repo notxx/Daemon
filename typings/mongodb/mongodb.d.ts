@@ -315,6 +315,7 @@ declare module "mongodb" {
   
       insert(query: T, callback?: (err: Error, result: any) => void): Promise<any>;
       insert(query: T, options: { safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
+      insertMany(docs: T[], options: { w?: number|string; wtimeout?: number; j?: boolean; serializeFunctions?: boolean; forceServerObjectId?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
   
       remove(selector: Object, callback?: (err: Error, result: any) => void): Promise<any>;
       remove(selector: Object, options: { safe?: any; single?: boolean; }, callback?: (err: Error, result: any) => void): Promise<any>;
