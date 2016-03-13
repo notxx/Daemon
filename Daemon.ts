@@ -447,9 +447,20 @@ class Daemon {
 					return collection.remove(query, options);
 				});
 			};
-			req._remove = req._save = req._update = res.update = function response_update(r:{ result: { ok:number, n: number, nModified: number } }) {
-				if (r.result)
-					res.json({ ok: r.result.ok, nModified: r.result.nModified, n: r.result.n });
+			req._remove = req._save = req._update = res.update = function response_update(...r:{ result: { ok:number, n: number, nModified: number } }[]) {
+				var result: { ok:number, n: number, nModified: number };
+				if (r.length > 1) {
+					result = { ok: 1, nModified: 0, n: 0 };
+					r.forEach(function(r) {
+						if (!r.result.ok) result.ok = 0;
+						result.nModified += r.result.nModified;
+						result.n += r.result.n;
+					});
+				} else {
+					result = r[0].result;
+				}
+				if (result)
+					res.json({ ok: result.ok, nModified: result.nModified, n: result.n });
 				else
 					res.json(r);
 			};
