@@ -1,13 +1,11 @@
 /// <reference path="typings/express/express.d.ts" />
-/// <reference path="typings/q/Q.d.ts" />
+/// <reference path="typings/es6-promise/es6-promise.d.ts" />
 /// <reference path="typings/mongodb/mongodb.d.ts" />
-/// <reference path="typings/mongodb-promise/mongodb-promise.d.ts" />
 /// <reference path="typings/moment/moment.d.ts" />
 declare module "Daemon" {
 	import express = require("express");
-	import Q = require("q");
+	import { Promise } from "es6-promise";
 	import mongodb = require("mongodb");
-	import mp = require("mongodb-promise");
 	module Daemon {
 		interface SessionOptions {
 			db: mongodb.Db;
@@ -32,19 +30,19 @@ declare module "Daemon" {
 			ops: {}
 		}
 		interface Request extends express.Request {
-			col:<T>(collectionName:string) => Q.Promise<mp.Collection<T>>;
-			find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Q.Promise<any[]>;
+			col:<T>(collectionName:string) => Promise<mongodb.Collection<T>>;
+			find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Promise<any[]>;
 			_find:<T>(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) => void;
-			findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
+			findOne:<T>(col:string, query:any, fields?:any) => Promise<T>;
 			_findOne:<T>(r:T) => void;
 			_array:<T>(r:T[]) => void;
-			insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Q.Promise<InsertResult>;
+			insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Promise<InsertResult>;
 			_insert:(r:InsertResult) => void;
-			save:<T>(col:string, op:T, options?:{ safe: any }) => Q.Promise<UpdateResult>;
+			save:<T>(col:string, op:T, options?:{ safe: any }) => Promise<UpdateResult>;
 			_save:<T>(r:UpdateResult) => void;
-			update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Q.Promise<UpdateResult>;
+			update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Promise<UpdateResult>;
 			_update:(r:UpdateResult) => void;
-			remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Q.Promise<UpdateResult>;
+			remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Promise<UpdateResult>;
 			_remove:(r:UpdateResult) => void;
 			_ex: (ex:Error | {}) => void;
 		
@@ -69,7 +67,7 @@ declare module "Daemon" {
 	class Daemon {
 		constructor(url:string)
 		_moment(exp:string|number): moment.Moment
-		collection<T>(col:string): Q.Promise<mp.Collection<T>>
+		collection<T>(col:string): Promise<mongodb.Collection<T>>
 		session(options: Daemon.SessionOptions): express.RequestHandler
 		mongodb(): express.RequestHandler
 		hybrid_auth(): express.RequestHandler

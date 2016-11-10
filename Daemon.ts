@@ -16,7 +16,7 @@ var MongoStore = cm(session);
 import serveStatic = require('serve-static');
 
 // mongodb & promise
-import Q = require("q");
+import { Promise } from "es6-promise";
 import mongodb = require("mongodb");
 import MongoClient = mongodb.MongoClient;
 import ObjectID = mongodb.ObjectID;
@@ -54,23 +54,23 @@ declare module Daemon {
 		result: { ok: number; n: number; }
 	}
 	interface Request extends express.Request {
-		col:<T>(collectionName:string) => Q.Promise<mongodb.Collection<T>>;
+		col:<T>(collectionName:string) => Promise<mongodb.Collection<T>>;
 		$find:any;
-		find:<T>(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Q.Promise<mongodb.Cursor<T>>;
+		find:<T>(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Promise<mongodb.Cursor<T>>;
 		_find:<T>(cursor:mongodb.Cursor<T>) => void;
-		findOne:<T>(col:string, query:any, fields?:any) => Q.Promise<T>;
+		findOne:<T>(col:string, query:any, fields?:any) => Promise<T>;
 		_findOne:<T>(r:T) => void;
 		_array:<T>(r:T[]) => void;
-		insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Q.Promise<InsertResult>;
+		insert:(col:string, op:any, options?:{ safe?: any; continueOnError?: boolean; keepGoing?: boolean; serializeFunctions?: boolean; }) => Promise<InsertResult>;
 		_insert:(r:InsertResult) => void;
-		insertMany:(col:string, docs:any[], options?:{ w?: number|string; wtimeout?: number; j?: boolean; serializeFunctions?: boolean; forceServerObjectId?: boolean; }) => Q.Promise<InsertManyResult>;
-		save:<T>(col:string, op:T, options?:{ safe: any }) => Q.Promise<UpdateResult>;
+		insertMany:(col:string, docs:any[], options?:{ w?: number|string; wtimeout?: number; j?: boolean; serializeFunctions?: boolean; forceServerObjectId?: boolean; }) => Promise<InsertManyResult>;
+		save:<T>(col:string, op:T, options?:{ safe: any }) => Promise<UpdateResult>;
 		_save:<T>(r:UpdateResult) => void;
-		update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Q.Promise<UpdateResult>;
+		update:(col:string, query:any, op:any, options?:{ safe?: boolean; upsert?: any; multi?: boolean; serializeFunctions?: boolean; }) => Promise<UpdateResult>;
 		_update:(r:UpdateResult) => void;
-		remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Q.Promise<UpdateResult>;
+		remove:(col:string, op:any, options?:{ safe?: any; single?: boolean; }) => Promise<UpdateResult>;
 		_remove:(r:UpdateResult) => void;
-		findAndModify:(col:string, query:any, sort:any[], op:any, options?:{ safe?: any; remove?: boolean; upsert?: boolean; new?: boolean; }) => Q.Promise<UpdateResult>;
+		findAndModify:(col:string, query:any, sort:any[], op:any, options?:{ safe?: any; remove?: boolean; upsert?: boolean; new?: boolean; }) => Promise<UpdateResult>;
 		_ex: (ex:Error | {}) => void;
 	
 		_export:(data:any, name:string[]) => void;
@@ -93,7 +93,7 @@ declare module Daemon {
 class Daemon {
 	static r(route: Daemon.Route) { return route; }
 	private conf: any;
-	private _db: Q.Promise<mongodb.Db>; // 打开的mongodb的promise
+	private _db: Promise<mongodb.Db>; // 打开的mongodb的promise
 	private _handlers: any; // 遗留的处理程序入口
 	constructor(connection_string: string, username?: string, password?: string) {
 		if (username && password) {
@@ -101,31 +101,32 @@ class Daemon {
 		} else {
 			console.log("connect_mongodb(" + connection_string + ")");
 		}
-		var self = this, defer = Q.defer<mongodb.Db>();
-		self._db = defer.promise;
+		var self = this;
+		self._db = new Promise(function(resolve, reject) {
+			MongoClient.connect(connection_string, {
+				promiseLibrary: Promise,
+				native_parser: !!mongodb.BSONNative,
+				safe: true
+			}).then(function(db:mongodb.Db) {
+				if (username && password) {
+					db.authenticate(username, password)
+					.then(function(result) {
+						console.log("mc.authenticate() => ", result);
+						if (result)
+							resolve(db);
+						else
+							reject("username/password");
+					}, function(err) {
+						console.log("mc.authenticate() error:", err.errmsg);
+						reject(err);
+					});
+				} else {
+					console.log("mc.connected()");
+					resolve(db);
+				}
+			}).done();
+		});
 		self._handlers = {};
-		MongoClient.connect(connection_string, {
-			promiseLibrary: Q.Promise,
-			native_parser: !!mongodb.BSONNative,
-			safe: true
-		}).then(function(db:mongodb.Db) {
-			if (username && password) {
-				db.authenticate(username, password)
-				.then(function(result) {
-					console.log("mc.authenticate() => ", result);
-					if (result)
-						defer.resolve(db);
-					else
-						defer.reject("username/password");
-				}, function(err) {
-					console.log("mc.authenticate() error:", err.errmsg);
-					defer.reject(err);
-				});
-			} else {
-				console.log("mc.connected()");
-				defer.resolve(db);
-			}
-		}).done();
 	}
 	handlers(handlers:{}) {
 		this._handlers = extend({}, handlers);
@@ -244,14 +245,14 @@ class Daemon {
 				var callee = arguments.callee,
 					caller = callee.caller;
 				if (Array.isArray(value)) { // Array
-					var promises = Array<Q.Promise<any>>();
+					var promises = Array<Promise<any>>();
 					(<Array<any>>value).forEach(function(v, i) {
 						var sub_path = path.slice();
 						sub_path.push('$');
 						promises.push(callee(indent - 1, sub_path, v));
 					});
 					//console.log(promises);
-					return Q.all(promises);
+					return Promise.all(promises);
 				} else if (con === String) {
 					return value;
 				} else if (con === Date) {
@@ -273,10 +274,10 @@ class Daemon {
 			};
 			function replace(indent: number, path: Array<string>, obj: any) { // 决定哪些值应予展开的函数
 				//console.log("replace", indent, path.join('.'));
-				if (typeof obj !== "object" || !obj || indent <= 0) { return Q(obj); }
+				if (typeof obj !== "object" || !obj || indent <= 0) { return Promise.resolve(obj); }
 				if (!path) path = [];
 				var promises = Array<any>(),
-					defer = Q.defer<any>();
+					promise:Promise<any>;
 				if (Array.isArray(obj)) {
 					var indexes = Array<number>(),
 						resulta = Array<any>();
@@ -286,14 +287,14 @@ class Daemon {
 						sub_path.push('$');
 						promises.push(replacer(indent - 1, sub_path, v));
 					});
-					Q.all(promises).then(function(values) {
-						//console.log("replace resolve", keys);
-						indexes.forEach(function(index, i) {
-							resulta[index] = values[i];
-						});
-						defer.resolve(resulta);
-					}).fail(function(err) {
-						defer.reject(err);
+					promise = new Promise(function(resolve, reject) {
+						Promise.all(promises).then(function(values) {
+							//console.log("replace resolve", keys);
+							indexes.forEach(function(index, i) {
+								resulta[index] = values[i];
+							});
+							resolve(resulta);
+						}, reject);
 					});
 				} else {
 					var keys = Array<string>(),
@@ -305,17 +306,17 @@ class Daemon {
 						sub_path.push(key);
 						promises.push(replacer(indent - 1, sub_path, obj[key]));
 					}
-					Q.all(promises).then(function(values) {
-						//console.log("replace resolve", keys);
-						keys.forEach(function(key, i) {
-							resulto[key] = values[i];
-						});
-						defer.resolve(resulto);
-					}).fail(function(err) {
-						defer.reject(err);
+					promise = new Promise(function(resolve, reject) {
+						Promise.all(promises).then(function(values) {
+							//console.log("replace resolve", keys);
+							keys.forEach(function(key, i) {
+								resulto[key] = values[i];
+							});
+							resolve(resulto);
+						}, reject);
 					});
 				}
-				return defer.promise;
+				return promise;
 			}
 			options = extend({
 				indent: 5,
@@ -369,15 +370,15 @@ class Daemon {
 			};
 			req._find = res.find = function response_find<T>(cursor:mongodb.Cursor<T>) {
 				if (req.$find) {
-					var $find = req.$find;
-					return Q.all([
+					var $find:{ $sort:any, $skip:number, $limit:number, $fields:any } = req.$find;
+					return Promise.all([
 						cursor.toArray(),
 						cursor.count(),
 						$find.$sort,
 						$find.$skip,
 						$find.$limit,
 						$find.$fields
-					]).spread(function(array:T[], count?:number, sort?:{}, skip?:number, limit?:number, fields?:{}) {
+					]).spread(function(array:T[], count:number, sort:any, skip:number, limit:number, fields:any) {
 						res.json({
 							$array: array,
 							$count: count,
@@ -532,7 +533,7 @@ class Daemon {
 				}).then(function(record) {
 					if (record) {
 						next(); // 短路
-						return Q.reject(record);
+						return Promise.reject(record);
 					}
 					return __db.collection<{}>("hybrid_authorization");
 				}).then(function(col:mongodb.Collection<{}>) {
@@ -540,10 +541,10 @@ class Daemon {
 				}).then(function(record) {
 					if (record) {
 						next(); // 短路
-						return Q.reject(record);
+						return Promise.reject(record);
 					}
 					_reject();
-				}).done();
+				});
 			} else {
 				_reject();
 			}
