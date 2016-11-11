@@ -91,7 +91,6 @@ declare module Daemon {
 }
 
 class Daemon {
-	static r(route: Daemon.Route) { return route; }
 	private conf: any;
 	private _db: Promise<mongodb.Db>; // 打开的mongodb的promise
 	private _handlers: any; // 遗留的处理程序入口

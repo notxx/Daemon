@@ -54,7 +54,6 @@ class Daemon {
         });
         self._handlers = {};
     }
-    static r(route) { return route; }
     handlers(handlers) {
         this._handlers = extend({}, handlers);
     }

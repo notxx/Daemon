@@ -60,7 +60,6 @@ declare module "Daemon" {
 		interface Route {
 			(req: Request, res: Response, ...data:any[]): void;
 		}
-		function r(route: Route): Route
 		function CGI(path: string, conf?: {})
 	}
 	
