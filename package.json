@@ -1,0 +1,36 @@
+{
+  "name": "daemon",
+  "version": "0.0.1",
+  "description": "",
+  "main": "dist/Daemon.js",
+  "typings": "Daemon.d.ts",
+  "files": [
+    "Daemon.d.ts",
+    "Daemon.js"
+  ],
+  "scripts": {
+    "build": "node node_modules\typescript\bin\tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/notxx/Daemon.git"
+  },
+  "author": "notxx@qq.com",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/notxx/Daemon/issues"
+  },
+  "homepage": "https://github.com/notxx/Daemon#readme",
+  "devDependencies": {
+    "typescript": "^2.0.9"
+  },
+  "dependencies": {
+    "connect-mongo": "^1.3.2",
+    "es6-promise": "^4.0.5",
+    "express": "^4.14.0",
+    "express-session": "^1.14.2",
+    "moment": "^2.16.0",
+    "mongodb": "^2.2.11"
+  }
+}
