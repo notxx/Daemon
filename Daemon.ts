@@ -106,6 +106,11 @@ declare module Daemon {
 	interface Route {
 		(req: Request, res: Response, ...data:any[]): void;
 	}
+	function CGI(path: string, conf?: {}): void
+	function collection<T>(col:string): Promise<mongodb.Collection<T>>
+	function session(options: SessionOptions): express.RequestHandler
+	function mongodb(): express.RequestHandler
+	function _moment(exp:string|number): moment.Moment
 }
 
 class Daemon {
