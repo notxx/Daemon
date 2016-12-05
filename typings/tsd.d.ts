@@ -6,7 +6,6 @@
 /// <reference path="cookie-parser/cookie-parser.d.ts" />
 /// <reference path="express-session/express-session.d.ts" />
 /// <reference path="connect-mongo/connect-mongo.d.ts" />
-/// <reference path="es6-promise/es6-promise.d.ts" />
 /// <reference path="mongodb/mongodb.d.ts" />
 /// <reference path="moment/moment-node.d.ts" />
 /// <reference path="moment/moment.d.ts" />

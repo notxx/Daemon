@@ -5,18 +5,35 @@ import fs = require("fs");
 import path = require("path");
 import domain = require("domain");
 import util = require('util');
-var extend = util._extend;
+let extend = util._extend;
 // express
 import express = require("express");
 import bodyParser = require("body-parser");
 import cookieParser = require("cookie-parser");
 import session = require("express-session");
 import cm = require('connect-mongo');
-var MongoStore = cm(session);
+let MongoStore = cm(session);
 import serveStatic = require('serve-static');
 
 // mongodb & promise
-import { Promise } from "es6-promise";
+require("es6-promise/auto");
+declare global {
+	interface Promise<T> {
+		spread<TResult1, TResult2>(onfulfilled: (...values: any[]) => TResult1 | PromiseLike<TResult1>,
+			onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>): Promise<TResult1 | TResult2>;
+	}
+}
+Promise.prototype.spread = function spread<TResult1, TResult2>(onfulfilled: (...values: Array<any>) => TResult1 | PromiseLike<TResult1>,
+		onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) {
+	return this.then((result:any) => {
+		if (Array.isArray(result)) {
+			onfulfilled.apply(this, result);
+		} else {
+			onfulfilled.call(this, result);
+		}
+	}, onrejected);
+};
+// Promise.prototype.then;
 import mongodb = require("mongodb");
 import MongoClient = mongodb.MongoClient;
 import ObjectID = mongodb.ObjectID;
@@ -84,6 +101,7 @@ declare module Daemon {
 		insertMany:(r:any) => void;
 		update:(r:UpdateResult) => void;
 		ex: (ex:Error | any) => void;
+		$json$options: any;
 	}
 	interface Route {
 		(req: Request, res: Response, ...data:any[]): void;
@@ -100,22 +118,21 @@ class Daemon {
 		} else {
 			console.log("connect_mongodb(" + connection_string + ")");
 		}
-		var self = this;
-		self._db = new Promise(function(resolve, reject) {
+		this._db = new Promise((resolve, reject) => {
 			MongoClient.connect(connection_string, {
 				promiseLibrary: Promise,
 				native_parser: !!mongodb.BSONNative,
 				safe: true
-			}).then(function(db:mongodb.Db) {
+			}).then((db:mongodb.Db) => {
 				if (username && password) {
 					db.authenticate(username, password)
-					.then(function(result) {
+					.then(result => {
 						console.log("mc.authenticate() => ", result);
 						if (result)
 							resolve(db);
 						else
 							reject("username/password");
-					}, function(err) {
+					}, err => {
 						console.log("mc.authenticate() error:", err.errmsg);
 						reject(err);
 					});
@@ -123,32 +140,31 @@ class Daemon {
 					console.log("mc.connected()");
 					resolve(db);
 				}
-			}).done();
+			});
 		});
-		self._handlers = {};
+		this._handlers = {};
 	}
 	handlers(handlers:{}) {
 		this._handlers = extend({}, handlers);
 	}
 	CGI(basepath: string, conf: any) {
-		var self = this,
-			domainCache:any = {}; // 执行域缓存
-		self.conf = conf;
+		let domainCache:any = {}; // 执行域缓存
+		this.conf = conf;
 		function _exec(func: express.RequestHandler,
 				req: express.Request,
 				res: express.Response,
 				next: Function) {
-			var key = req.path,
+			let key = req.path,
 				d: domain.Domain;
 			if (!domainCache[key]) {
 				d = domainCache[key] = domain.create();
-				d.on("error", function(e:Error) {
+				d.on("error", (e:Error) => {
 					res.status(500).send({ error: e.message });
 				});
 			} else {
 				d = domainCache[key];
 			}
-			d.run(function() {
+			d.run(() => {
 				if (conf[key]) {
 					func.call(conf[key], req, res, next);
 				} else {
@@ -159,22 +175,23 @@ class Daemon {
 		if (!/^\//.test(basepath)) {
 			basepath = path.join(path.dirname(module.parent.filename), basepath); // 使用父模块的相对路径
 		}
-		return (<express.RequestHandler>function _CGI(req, res, next) {
-			var absolute = path.join(basepath, req.path);
+		return ((req:express.Request, res:express.Response, next:Function) => {
+			let absolute = path.join(basepath, req.path),
+				filename:string;
 			if (absolute.indexOf(basepath) != 0) return res.status(500).send({ error: "out of jail" });
 			try {
-				var filename = require.resolve(absolute);
+				filename = require.resolve(absolute);
 			} catch (e) {
-				var handler = self._handlers[req.path];
+				let handler = this._handlers[req.path];
 				if (handler)
 					return handler(req, res);
 				else
 					return res.status(404).send({ error: "module not found" });
 			}
-			var module = require.cache[filename];
+			let module = require.cache[filename];
 			if (module) { return _exec(module.exports, req, res, next); }
-			var watcher = fs.watch(filename, { persistent: false });
-			watcher.on("change", function() {
+			let watcher = fs.watch(filename, { persistent: false });
+			watcher.on("change", () => {
 				console.log("unload " + filename);
 				watcher.close();
 				if (module && module.parent) {
@@ -188,7 +205,7 @@ class Daemon {
 	}
 	collection<T>(col:string) {
 		if (typeof col !== "string") throw new Error("need collectionName");
-		return this._db.then(function(db) { return db.collection<T>(col); });
+		return this._db.then((db) => db.collection<T>(col));
 	}
 	session(options: Daemon.SessionOptions) {
 		function _session(opt: Daemon.SessionOptions) {
@@ -200,7 +217,7 @@ class Daemon {
 				cookie: { maxAge: opt.ttl * 1000 } // 会话有效期为30天
 			});
 		}
-		var opt: Daemon.SessionOptions = {
+		let opt: Daemon.SessionOptions = {
 			db: null,
 			ttl: 30 * 24 * 60 * 60,
 			touchAfter: 3600, // 每小时自动更新会话一次
@@ -209,8 +226,8 @@ class Daemon {
 		};
 		extend(opt, options);
 		if (opt.db) { return _session(opt); }
-		var stub:express.RequestHandler = null;
-		this._db.then(function(db) {
+		let stub:express.RequestHandler = null;
+		this._db.then((db) => {
 			opt.db = db;
 			stub = _session(opt);
 		});
@@ -225,30 +242,20 @@ class Daemon {
 		});
 	}
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
-		var self = this;
 		// 替换express的json响应
-		var _json = express.response.json;
-		express.response.json = function _mongodb_json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
-			var resp = this,
-				args = Array.prototype.slice.apply(arguments);
-			if (typeof status === 'object') {
-				options = body;
-				body = status;
-				status = null;
-			}
-			function replacer(indent: number, path: Array<string>, value: any) { // 实际展开值的函数
+		let daemon = this,
+			_json = express.response.json;
+		express.response.json = function json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
+			let replacer = (indent: number, path: Array<string>, value: any) => { // 实际展开值的函数
 				//console.log("replacer", indent, path.join('.'));
 				if (typeof value !== "object" || !value || indent < 0) { return value; }
-				var con = value.constructor;
-				//console.log("replacer", indent, con.name);
-				var callee = arguments.callee,
-					caller = callee.caller;
+				let con = value.constructor;
 				if (Array.isArray(value)) { // Array
-					var promises = Array<Promise<any>>();
-					(<Array<any>>value).forEach(function(v, i) {
-						var sub_path = path.slice();
+					let promises = Array<Promise<any>>();
+					(<Array<any>>value).forEach((v, i) => {
+						let sub_path = path.slice();
 						sub_path.push('$');
-						promises.push(callee(indent - 1, sub_path, v));
+						promises.push(replacer(indent - 1, sub_path, v));
 					});
 					//console.log(promises);
 					return Promise.all(promises);
@@ -259,56 +266,55 @@ class Daemon {
 				} else if (con === ObjectID) { // ObjectID
 					return { $id: value.toHexString() };
 				} else if (con === DBRef) {
-					var fields = options.fields[value.namespace];
+					let fields = options.fields[value.namespace];
 					if (fields === false) { return value; }
-					return self.collection(value.namespace)
-					.then(function (col) {
+					return daemon.collection(value.namespace)
+					.then((col) => {
 						return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
 					});
 				} else {
 					//console.log("replacer", con.name);
-					//if (caller === replace) { return value; }
 					return replace(indent - 1, path, value);
 				}
 			};
-			function replace(indent: number, path: Array<string>, obj: any) { // 决定哪些值应予展开的函数
+			let replace = (indent: number, path: Array<string>, obj: any) => { // 决定哪些值应予展开的函数
 				//console.log("replace", indent, path.join('.'));
 				if (typeof obj !== "object" || !obj || indent <= 0) { return Promise.resolve(obj); }
 				if (!path) path = [];
-				var promises = Array<any>(),
+				let promises = Array<any>(),
 					promise:Promise<any>;
 				if (Array.isArray(obj)) {
-					var indexes = Array<number>(),
+					let indexes = Array<number>(),
 						resulta = Array<any>();
-					(<Array<any>>obj).forEach(function(v, i) {
+					(<Array<any>>obj).forEach((v, i) => {
 						indexes.push(i);
-						var sub_path = path.slice();
+						let sub_path = path.slice();
 						sub_path.push('$');
 						promises.push(replacer(indent - 1, sub_path, v));
 					});
-					promise = new Promise(function(resolve, reject) {
-						Promise.all(promises).then(function(values) {
+					promise = new Promise((resolve, reject) => {
+						Promise.all(promises).then((values) => {
 							//console.log("replace resolve", keys);
-							indexes.forEach(function(index, i) {
+							indexes.forEach((index, i) => {
 								resulta[index] = values[i];
 							});
 							resolve(resulta);
 						}, reject);
 					});
 				} else {
-					var keys = Array<string>(),
+					let keys = Array<string>(),
 						resulto:any = {};
-					for (var key in obj) {
+					for (let key in obj) {
 						if (!obj.hasOwnProperty(key)) { continue; }
 						keys.push(key);
-						var sub_path = path.slice();
+						let sub_path = path.slice();
 						sub_path.push(key);
 						promises.push(replacer(indent - 1, sub_path, obj[key]));
 					}
-					promise = new Promise(function(resolve, reject) {
-						Promise.all(promises).then(function(values) {
+					promise = new Promise((resolve, reject) => {
+						Promise.all(promises).then((values) => {
 							//console.log("replace resolve", keys);
-							keys.forEach(function(key, i) {
+							keys.forEach((key, i) => {
 								resulto[key] = values[i];
 							});
 							resolve(resulto);
@@ -317,13 +323,20 @@ class Daemon {
 				}
 				return promise;
 			}
+
+			let resp: Daemon.Response = this;
+			if (typeof status === 'object') {
+				options = body;
+				body = status;
+				status = null;
+			}
 			options = extend({
 				indent: 5,
 				fields: {},
 				fieldsDefault: { name: 1 }
 			}, resp.$json$options, options);
 			if (typeof body === 'object') {
-				replace(options.indent, [], body).then(function (value:any) {
+				replace(options.indent, [], body).then((value:any) => {
 					if (status)
 						resp.status(status);
 					_json.apply(resp, [ value ]);
@@ -334,12 +347,12 @@ class Daemon {
 				_json.apply(resp, [ body ]);
 			}
 		}
-		return (<express.RequestHandler>function(req:Daemon.Request, res:Daemon.Response, next:Function) {
+		return ((req:Daemon.Request, res:Daemon.Response, next:Function) => {
 			// 自动注入某些通用参数（排序、分页等）
-			req.col = self.collection.bind(self);
-			req.find = function find<T>(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) {
+			req.col = daemon.collection.bind(self);
+			req.find = <T>(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				var $find:any = req.$find = {},
+				let $find:any = req.$find = {},
 					$query = $find.$query = query,
 					$sort = $find.$sort = sort || req.query.$sort || req.body.$sort,
 					$skip = $find.$skip = skip || req.query.$skip || req.body.$skip || 0,
@@ -359,17 +372,17 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return self.collection<T>(col).then(function(collection) {
-					var cursor = collection.find($query || {}, $fields || {});
+				return daemon.collection<T>(col).then((collection) => {
+					let cursor = collection.find($query || {}, $fields || {});
 					cursor.sort($find.$sort);
 					cursor.skip($find.$skip);
 					cursor.limit($find.$limit);
 					return cursor;
 				});
 			};
-			req._find = res.find = function response_find<T>(cursor:mongodb.Cursor<T>) {
+			req._find = res.find = <T>(cursor:mongodb.Cursor<T>) => {
 				if (req.$find) {
-					var $find:{ $sort:any, $skip:number, $limit:number, $fields:any } = req.$find;
+					let $find:{ $sort:any, $skip:number, $limit:number, $fields:any } = req.$find;
 					return Promise.all([
 						cursor.toArray(),
 						cursor.count(),
@@ -377,7 +390,7 @@ class Daemon {
 						$find.$skip,
 						$find.$limit,
 						$find.$fields
-					]).spread(function(array:T[], count:number, sort:any, skip:number, limit:number, fields:any) {
+					]).spread((array:any, count:any, sort:any, skip:any, limit:any, fields:any) => {
 						res.json({
 							$array: array,
 							$count: count,
@@ -388,70 +401,70 @@ class Daemon {
 						});
 					});
 				} else if (cursor instanceof mongodb.Cursor) {
-					cursor.toArray().then(function(array:T[]) {
+					cursor.toArray().then((array:T[]) => {
 						res.json(array);
 					});
 				} else {
 					res.json(cursor);
 				}
 			};
-			req.findOne = function findOne<T>(col:string, query:{}, fields?:{}) {
+			req.findOne = <T>(col:string, query:{}, fields?:{}) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				var $fields = req.query.$fields || req.body.$fields;
-				return self.collection<T>(col).then(function(collection) {
+				let $fields = req.query.$fields || req.body.$fields;
+				return daemon.collection<T>(col).then((collection) => {
 					return collection.findOne(query || {}, fields || $fields || {});
 				});
 			};
-			req._array = req._findOne = res.array = res.findOne = function response_one<T>(r:T|T[]) {
+			req._array = req._findOne = res.array = res.findOne = <T>(r:T|T[]) => {
 				res.json(r);
 			};
-			req.insert = function insert(col, op, options) {
+			req.insert = (col, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.insert(op, options);
 				});
 			};
-			req._insert = res.insert = function response_insert(r:{ ops:{}, result: { ok:number, n: number } }) {
+			req._insert = res.insert = (r:{ ops:{}, result: { ok:number, n: number } }) => {
 				if (r.result)
 					res.json({ insert: r.ops, ok: r.result.ok, n: r.result.n });
 				else
 					res.json(r);
 			};
-			req.insertMany = function insertMany(col, op, options) {
+			req.insertMany = (col, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.insertMany(op, options);
 				});
 			};
-			res.insertMany = function response_insertMany(r:Daemon.InsertManyResult) {
+			res.insertMany = (r:Daemon.InsertManyResult) => {
 				//if (r.result)
 				//	res.json({ insert: r.ops, ok: r.result.ok, n: r.result.n });
 				//else
 					res.json(r);
 			};
-			req.save = function save<T>(col:string, op:T, options?:{ safe: any }) {
+			req.save = <T>(col:string, op:T, options?:{ safe: any }) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.save(op, options);
 				});
 			};
-			req.update = function update(col, query, op, options) {
+			req.update = (col, query, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.update(query, op, options);
 				});
 			};
-			req.remove = function remove(col, query, options) {
+			req.remove = (col, query, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.remove(query, options);
 				});
 			};
-			req._remove = req._save = req._update = res.update = function response_update(...r:{ result: { ok:number, n: number, nModified: number } }[]) {
-				var result: { ok:number, n: number, nModified: number };
+			req._remove = req._save = req._update = res.update = (...r:{ result: { ok:number, n: number, nModified: number } }[]) => {
+				let result: { ok:number, n: number, nModified: number };
 				if (r.length > 1) {
 					result = { ok: 1, nModified: 0, n: 0 };
-					r.forEach(function(r) {
+					r.forEach((r) => {
 						if (!r.result.ok) result.ok = 0;
 						result.nModified += r.result.nModified;
 						result.n += r.result.n;
@@ -464,24 +477,24 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.findAndModify = function findAndModify(col, query, sort, op, options) {
+			req.findAndModify = (col, query, sort, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return self.collection(col).then(function(collection) {
+				return daemon.collection(col).then((collection) => {
 					return collection.findAndModify(query, sort, op, options);
 				});
 			};
 			// 匹配输出的方便方法
-			req._ex = res.ex = function response_ex(ex) {
+			req._ex = res.ex = (ex) => {
 				res.status(500).json(ex.message ? { message: ex.message, stack: ex.stack } : { ex: ex });
 			};
 			// 将参数复制到对象
-			req._export = function request_export(data, names) {
-				names.forEach(function(name) {
+			req._export = (data, names) => {
+				names.forEach((name) => {
 					data[name] = req.query[name] || req.body[name];
 				})
 			};
-			req._exportInt = function request_export_int(data, names) {
-				names.forEach(function(name) {
+			req._exportInt = (data, names) => {
+				names.forEach((name) => {
 					data[name] = parseInt(req.query[name] || req.body[name]);
 				})
 			};
@@ -489,7 +502,7 @@ class Daemon {
 		});
 	}
 	_moment(exp:string|number): moment.Moment { // 将输入的参数转化为moment类型的值
-		var exp0: number, m:moment.Moment;
+		let exp0: number, m:moment.Moment;
 		if (typeof exp === 'string' && /^\d+$/.test(exp))
 			exp0 = parseInt(exp);
 		else if (typeof exp === 'number')
@@ -498,56 +511,6 @@ class Daemon {
 			return null;
 		m = moment(exp);
 		return m.isValid() ? m : null;
-	}
-	// 混合式验证
-	private whitelist: string[] // IP 白名单
-	whitelist_add(ip:string) {
-		this.whitelist.push(ip);
-	}
-	private basic: string[] // 用户名密码
-	basic_add(username:string, password:string) {
-		this.basic.push("Basic " + new Buffer(username + ":" + password).toString("base64"));
-	}
-	realm = "Authentication Zone"
-	hybrid_auth(realm:string) {
-		var self = this;
-		if (realm) { self.realm = realm; }
-		return (<express.RequestHandler>function _hybrid_auth(req, res, next) { // 混合式验证，支持IP白名单和用户名密码
-			function _reject() {
-				res.set("WWW-Authenticate", "Basic realm=\"" + self.realm + "\"");
-				res.sendStatus(401);
-			}
-			var ip = req.headers["x-real-ip"],
-				auth = req.headers["authorization"];
-			if (self.whitelist.indexOf(ip) >= 0 // IP 白名单
-					|| self.basic.indexOf(auth) >= 0) { // 用户名密码
-				next();
-			} else if (self._db) {
-				var __db: mongodb.Db;
-				self._db.then(function(db) {
-					__db = db;
-					return __db.collection("hybrid_ip_whitelist");
-				}).then(function(col) {
-					return col.findOne({ ip: ip });
-				}).then(function(record) {
-					if (record) {
-						next(); // 短路
-						return Promise.reject(record);
-					}
-					return __db.collection<{}>("hybrid_authorization");
-				}).then(function(col:mongodb.Collection<{}>) {
-					return col.findOne({ auth: auth });
-				}).then(function(record) {
-					if (record) {
-						next(); // 短路
-						return Promise.reject(record);
-					}
-					_reject();
-				});
-			} else {
-				_reject();
-			}
-		});
 	}
 }
 
