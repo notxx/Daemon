@@ -28,6 +28,7 @@ var ObjectID = mongodb.ObjectID;
 var DBRef = mongodb.DBRef;
 // moment
 const moment = require("moment");
+const rootpath = path.dirname(module.parent.filename); // 使用父模块的相对路径
 class Daemon {
     constructor(connection_string, username, password) {
         if (username && password) {
@@ -63,6 +64,35 @@ class Daemon {
         });
         this._handlers = {};
     }
+    static _require(id) {
+        if (!id)
+            throw new TypeError("null id");
+        let filename = require.resolve(id);
+        let module = require.cache[filename];
+        if (module)
+            return module.exports;
+        let watcher = fs.watch(filename, { persistent: false });
+        watcher.once("change", () => {
+            console.log("unload %s(%s)", id, filename);
+            watcher.close();
+            if (module && module.parent) {
+                module.parent.children.splice(module.parent.children.indexOf(module), 1);
+            }
+            delete require.cache[filename];
+        });
+        console.log("load %s(%s)", id, filename);
+        return require(id);
+    }
+    static require(id) {
+        if (!id)
+            throw new TypeError("null id");
+        if (id.startsWith(".")) {
+            id = path.join(rootpath, id);
+            if (!id.startsWith(rootpath))
+                throw new TypeError("module out of jail");
+        }
+        return this._require(id);
+    }
     handlers(handlers) {
         this._handlers = extend({}, handlers);
     }
@@ -70,6 +100,26 @@ class Daemon {
         let domainCache = {}; // 执行域缓存
         this.conf = conf;
         function _exec(func, req, res, next) {
+        }
+        if (!/^\//.test(basepath)) {
+            basepath = path.join(rootpath, basepath); // 使用父模块的相对路径
+            if (basepath.indexOf(rootpath) != 0)
+                throw new TypeError("basepath out of jail");
+        }
+        return ((req, res, next) => {
+            let absolute = path.join(basepath, req.path);
+            if (absolute.indexOf(basepath) != 0)
+                return res.status(500).send({ error: "web-module out of jail" });
+            try {
+                require.resolve(absolute);
+            }
+            catch (e) {
+                let handler = this._handlers[req.path];
+                if (handler)
+                    return handler(req, res);
+                else
+                    return res.status(404).send({ error: "module not found" });
+            }
             let key = req.path, d;
             if (!domainCache[key]) {
                 d = domainCache[key] = domain.create();
@@ -80,48 +130,10 @@ class Daemon {
             else {
                 d = domainCache[key];
             }
-            d.run(() => {
-                if (conf[key]) {
-                    func.call(conf[key], req, res, next);
-                }
-                else {
-                    func(req, res, next);
-                }
-            });
-        }
-        if (!/^\//.test(basepath)) {
-            basepath = path.join(path.dirname(module.parent.filename), basepath); // 使用父模块的相对路径
-        }
-        return ((req, res, next) => {
-            let absolute = path.join(basepath, req.path), filename;
-            if (absolute.indexOf(basepath) != 0)
-                return res.status(500).send({ error: "out of jail" });
-            try {
-                filename = require.resolve(absolute);
-            }
-            catch (e) {
-                let handler = this._handlers[req.path];
-                if (handler)
-                    return handler(req, res);
-                else
-                    return res.status(404).send({ error: "module not found" });
-            }
-            let module = require.cache[filename];
-            if (module) {
-                return _exec(module.exports, req, res, next);
-            }
-            let watcher = fs.watch(filename, { persistent: false });
-            watcher.on("change", () => {
-                console.log("unload " + filename);
-                watcher.close();
-                if (module && module.parent) {
-                    module.parent.children.splice(module.parent.children.indexOf(module), 1);
-                }
-                delete require.cache[filename];
-            });
-            _exec(require(absolute), req, res, next);
-            console.log("load " + filename);
+            d.run(() => Daemon._require(absolute).call(conf[key] || this, req, res, next));
         });
+    }
+    hot(id) {
     }
     collection(col) {
         if (typeof col !== "string")
@@ -282,7 +294,7 @@ class Daemon {
         };
         return ((req, res, next) => {
             // 自动注入某些通用参数（排序、分页等）
-            req.col = daemon.collection.bind(self);
+            req.col = daemon.collection.bind(this);
             req.find = (col, query, fields, sort, skip, limit) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
