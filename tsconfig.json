@@ -4,11 +4,16 @@
 		"target": "es6",
 		"module": "commonjs",
 		"noImplicitAny": true,
-		"removeComments": false,
+		"removeComments": true,
 		"preserveConstEnums": true,
-		"sourceMap": true
-    },
-    "files": [
-		"Daemon.ts"
+		"sourceMap": false,
+		"stripInternal": true,
+		"typeRoots": [
+			"node_modules/@type",
+			"./typings"
+		]
+	},
+	"files": [
+		"src/Daemon.ts"
 	]
 }
