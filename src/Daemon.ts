@@ -111,14 +111,14 @@ class Daemon {
 		if (module) return module.exports;
 		let watcher = fs.watch(filename, { persistent: false });
 		watcher.once("change", () => {
-			console.log("unload %s(%s)", id, filename);
+			console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
 			watcher.close();
 			if (module && module.parent) {
 				module.parent.children.splice(module.parent.children.indexOf(module), 1);
 			}
 			delete require.cache[filename];
 		});
-		console.log("load %s(%s)", id, filename);
+		console.log(`load ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
 		return require(id);
 	}
 	static require(id: string):any {
@@ -144,13 +144,13 @@ class Daemon {
 				if (username && password) {
 					db.authenticate(username, password)
 					.then(result => {
-						console.log("mc.authenticate() => ", result);
+						console.log(`mc.authenticate() => ${result}`);
 						if (result)
 							resolve(db);
 						else
 							reject("username/password");
 					}, err => {
-						console.log("mc.authenticate() error:", err.errmsg);
+						console.log(`mc.authenticate() error: ${err.errmsg}`);
 						reject(err);
 					});
 				} else {
@@ -248,7 +248,7 @@ class Daemon {
 			_json = express.response.json;
 		express.response.json = function json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
 			let replacer = (indent: number, path: Array<string>, value: any) => { // 实际展开值的函数
-				//console.log("replacer", indent, path.join('.'));
+				//console.log(`replacer ${indent} ${path.join('.')}`);
 				if (typeof value !== "object" || !value || indent < 0) { return value; }
 				if (Array.isArray(value)) { // Array
 					let promises = Array<Promise<any>>();
@@ -273,12 +273,12 @@ class Daemon {
 						return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
 					});
 				} else {
-					//console.log("replacer", con.name);
+					//console.log(`replacer ${con.name}`);
 					return replace(indent - 1, path, value);
 				}
 			};
 			let replace = (indent: number, path: Array<string>, obj: any) => { // 决定哪些值应予展开的函数
-				//console.log("replace", indent, path.join('.'));
+				//console.log(`replace ${indent} ${path.join('.')}`);
 				if (typeof obj !== "object" || !obj || indent <= 0) { return Promise.resolve(obj); }
 				if (!path) path = [];
 				let promises = Array<any>(),
@@ -294,7 +294,7 @@ class Daemon {
 					});
 					promise = new Promise((resolve, reject) => {
 						Promise.all(promises).then((values) => {
-							//console.log("replace resolve", keys);
+							//console.log(`replace resolve ${keys}`);
 							indexes.forEach((index, i) => {
 								resulta[index] = values[i];
 							});
@@ -313,7 +313,7 @@ class Daemon {
 					}
 					promise = new Promise((resolve, reject) => {
 						Promise.all(promises).then((values) => {
-							//console.log("replace resolve", keys);
+							//console.log(`replace resolve ${keys}`);
 							keys.forEach((key, i) => {
 								resulto[key] = values[i];
 							});

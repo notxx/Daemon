@@ -45,13 +45,13 @@ class Daemon {
                 if (username && password) {
                     db.authenticate(username, password)
                         .then(result => {
-                        console.log("mc.authenticate() => ", result);
+                        console.log(`mc.authenticate() => ${result}`);
                         if (result)
                             resolve(db);
                         else
                             reject("username/password");
                     }, err => {
-                        console.log("mc.authenticate() error:", err.errmsg);
+                        console.log(`mc.authenticate() error: ${err.errmsg}`);
                         reject(err);
                     });
                 }
@@ -72,14 +72,14 @@ class Daemon {
             return module.exports;
         let watcher = fs.watch(filename, { persistent: false });
         watcher.once("change", () => {
-            console.log("unload %s(%s)", id, filename);
+            console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
             watcher.close();
             if (module && module.parent) {
                 module.parent.children.splice(module.parent.children.indexOf(module), 1);
             }
             delete require.cache[filename];
         });
-        console.log("load %s(%s)", id, filename);
+        console.log(`load ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
         return require(id);
     }
     static require(id) {
