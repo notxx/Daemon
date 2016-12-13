@@ -335,7 +335,7 @@ class Daemon {
 				fields: {},
 				fieldsDefault: { name: 1 }
 			}, options);
-			options = extend(resp.$json$options, options);
+			options = extend(options, resp.$json$options);
 			if (typeof body === 'object') {
 				replace(options.indent, [], body).then((value:any) => {
 					if (status)
@@ -373,7 +373,8 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return daemon.collection(col).then((collection) => collection.find($query || {}, $fields || {}, $find.$sort, $find.$skip, $find.$limit));
+				return daemon.collection(col).then((collection) => 
+					collection.find($query || {}, $fields || {}, $find.$skip, $find.$limit).sort($find.$sort));
 			};
 			req._find = res.find = (cursor: mongodb.Cursor) => {
 				if (req.$find) {
