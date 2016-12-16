@@ -391,10 +391,20 @@ class Daemon {
                 else
                     res.json(r);
             };
-            req.findAndUpdate = (col, query, op, options) => {
+            req.findOneAndDelete = (col, filter, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.findOneAndUpdate(query, op, options));
+                return daemon.collection(col).then((collection) => collection.findOneAndDelete(filter, options));
+            };
+            req.findOneAndReplace = (col, filter, replacement, options) => {
+                if (typeof col !== "string")
+                    throw new Error("need collectionName");
+                return daemon.collection(col).then((collection) => collection.findOneAndReplace(filter, replacement, options));
+            };
+            req.findOneAndUpdate = (col, filter, update, options) => {
+                if (typeof col !== "string")
+                    throw new Error("need collectionName");
+                return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
             };
             req._ex = res.ex = (ex) => {
                 res.status(500).json(ex.message ? { message: ex.message, stack: ex.stack } : { ex: ex });

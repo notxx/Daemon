@@ -73,7 +73,9 @@ declare module Daemon {
 		_update:(r:mongodb.WriteOpResult) => void;
 		remove:(col:string, query:any, options?: mongodb.CollectionOptions & { single?: boolean; }) => Promise<mongodb.WriteOpResult>;
 		_remove:(r:mongodb.WriteOpResult) => void;
-		findAndUpdate:(col:string, query:any, op:any, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+		findOneAndDelete:(col:string, filter:Object, options: { projection?: Object, sort?: Object, maxTimeMS?: number }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+		findOneAndReplace:(col:string, filter:Object, replacement:Object, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+		findOneAndUpdate:(col:string, filter:Object, update:Object, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
 		_ex: (ex:Error | {}) => void;
 	
 		_export:(data:any, name:string[]) => void;
@@ -453,9 +455,17 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.findAndUpdate = (col, query, op, options) => {
+			req.findOneAndDelete = (col, filter, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.findOneAndUpdate(query, op, options));
+				return daemon.collection(col).then((collection) => collection.findOneAndDelete(filter, options));
+			};
+			req.findOneAndReplace = (col, filter, replacement, options) => {
+				if (typeof col !== "string") throw new Error("need collectionName");
+				return daemon.collection(col).then((collection) => collection.findOneAndReplace(filter, replacement, options));
+			};
+			req.findOneAndUpdate = (col, filter, update, options) => {
+				if (typeof col !== "string") throw new Error("need collectionName");
+				return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
 			};
 			// 匹配输出的方便方法
 			req._ex = res.ex = (ex) => {

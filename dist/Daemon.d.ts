@@ -37,7 +37,13 @@ declare module Daemon {
             single?: boolean;
         }) => Promise<mongodb.WriteOpResult>;
         _remove: (r: mongodb.WriteOpResult) => void;
-        findAndUpdate: (col: string, query: any, op: any, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+        findOneAndDelete: (col: string, filter: Object, options: {
+            projection?: Object;
+            sort?: Object;
+            maxTimeMS?: number;
+        }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+        findOneAndReplace: (col: string, filter: Object, replacement: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+        findOneAndUpdate: (col: string, filter: Object, update: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
         _ex: (ex: Error | {}) => void;
         _export: (data: any, name: string[]) => void;
         _exportInt: (data: any, name: string[]) => void;
