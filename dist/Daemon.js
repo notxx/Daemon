@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const domain = require("domain");
+const cluster = require("cluster");
 const express = require("express");
 const session = require("express-session");
 const cm = require("connect-mongo");
@@ -29,6 +30,11 @@ function extend(origin, add) {
 const mongodb = require("mongodb");
 var MongoClient = mongodb.MongoClient;
 const moment = require("moment");
+var Event;
+(function (Event) {
+    Event[Event["Load"] = 0] = "Load";
+    Event[Event["Unload"] = 1] = "Unload";
+})(Event || (Event = {}));
 const rootpath = path.dirname(module.parent.filename);
 class Daemon {
     constructor(connection_string, username, password) {
@@ -63,23 +69,81 @@ class Daemon {
         });
         this._handlers = {};
     }
+    static _init() {
+        if (cluster.isMaster)
+            cluster.on("online", worker => {
+                worker.on("message", message => this._broadcast_message(worker, message));
+            });
+        else
+            process.on("message", (message) => this._onmessage(message));
+    }
+    static _broadcast_message(source, message) {
+        for (let id in cluster.workers) {
+            let worker = cluster.workers[id];
+            if (worker === source)
+                continue;
+            worker.send(message);
+        }
+    }
+    static _onmessage(message) {
+        if (!message.daemon)
+            return;
+        switch (message.event) {
+            case Event.Load:
+                require(message.id);
+                this._watch(message.id, message.filename);
+                break;
+            case Event.Unload:
+                this._unload(message);
+                break;
+        }
+    }
+    static _watch(id, filename) {
+        let watcher = fs.watch(filename, { persistent: false });
+        watcher.once("change", () => {
+            watcher.close();
+            this._triggerunload(id, filename);
+        });
+    }
+    static _unload(message) {
+        let m = require.cache[message.filename];
+        if (m && m.parent) {
+            m.parent.children.splice(m.parent.children.indexOf(m), 1);
+        }
+        delete require.cache[message.filename];
+    }
+    static _trigger(message) {
+        message.daemon = true;
+        if (cluster.isWorker) {
+            process.send(message);
+        }
+    }
+    static _triggerload(id, filename) {
+        console.log(`load ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
+        if (cluster.isWorker)
+            this._trigger({
+                event: Event.Load,
+                id: id,
+                filename: filename
+            });
+        this._watch(id, filename);
+    }
+    static _triggerunload(id, filename) {
+        console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
+        this._trigger({
+            event: Event.Unload,
+            id: id,
+            filename: filename
+        });
+    }
     static _require(id) {
         if (!id)
             throw new TypeError("null id");
         let filename = require.resolve(id);
-        let module = require.cache[filename];
-        if (module)
-            return module.exports;
-        let watcher = fs.watch(filename, { persistent: false });
-        watcher.once("change", () => {
-            console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
-            watcher.close();
-            if (module && module.parent) {
-                module.parent.children.splice(module.parent.children.indexOf(module), 1);
-            }
-            delete require.cache[filename];
-        });
-        console.log(`load ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
+        let m = require.cache[filename];
+        if (m)
+            return m.exports;
+        this._triggerload(id, filename);
         return require(id);
     }
     static require(id) {
@@ -434,4 +498,5 @@ class Daemon {
         return m.isValid() ? m : null;
     }
 }
+Daemon._init();
 module.exports = Daemon;

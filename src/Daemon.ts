@@ -2,7 +2,6 @@
 import * as fs from "fs"
 import * as path from "path"
 import * as domain from "domain"
-import * as util from "util"
 import * as cluster from "cluster"
 // express
 /// <reference path="../typings/tsd.d.ts" />
@@ -102,25 +101,97 @@ interface Daemon {
 	mongodb(): express.RequestHandler
 	_moment(exp:string|number): moment.Moment
 }
+enum Event {
+	Load,
+	Unload
+}
+interface Message {
+	daemon: boolean
+	event: Event
+	id: string
+	filename: string
+}
 
 const rootpath = path.dirname(module.parent.filename); // 使用父模块的相对路径
 
 class Daemon {
-	static _require(id:string):any {
-		if (!id) throw new TypeError("null id");
-		let filename = require.resolve(id);
-		let module = require.cache[filename];
-		if (module) return module.exports;
+	static _init() {
+		// console.log("_init");
+		if (cluster.isMaster)
+			cluster.on("online", worker=>{
+				// console.log("worker online");
+				worker.on("message", message=>this._broadcast_message(worker, <Message>message));
+			});
+		else
+			process.on("message", (message:any)=>this._onmessage(message));
+	}
+	private static _broadcast_message(source:cluster.Worker, message:Message) {
+		// console.log(`_broadcast_message ${source} ${message})`);
+		for (let id in cluster.workers) {
+			let worker = cluster.workers[id];
+			if (worker === source) continue;
+			worker.send(message);
+		}
+	}
+	private static _onmessage(message:Message) {
+		// console.log(`_onmessage ${message})`);
+		if (!message.daemon) return;
+		switch(message.event) {
+		case Event.Load:
+			require(message.id);
+			this._watch(message.id, message.filename);
+			break;
+		case Event.Unload:
+			this._unload(message);
+			break;
+		}
+	}
+	private static _watch(id:string, filename:string) {
 		let watcher = fs.watch(filename, { persistent: false });
 		watcher.once("change", () => {
-			console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
 			watcher.close();
-			if (module && module.parent) {
-				module.parent.children.splice(module.parent.children.indexOf(module), 1);
-			}
-			delete require.cache[filename];
+			this._triggerunload(id, filename);
 		});
+	}
+	private static _unload(message:Message) {
+		let m = require.cache[message.filename];
+		if (m) {
+			if (m.parent) { m.parent.children.splice(m.parent.children.indexOf(m), 1); }
+			delete require.cache[message.filename];
+		}
+	}
+	private static _trigger(message:Message) {
+		// console.log(`_trigger ${message})`);
+		message.daemon = true;
+		if (cluster.isWorker) {
+			process.send(message);
+		}
+	}
+	/** 触发模块载入事件. */
+	private static _triggerload(id:string, filename:string) {
 		console.log(`load ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
+		if (cluster.isWorker)
+			this._trigger(<Message>{
+				event: Event.Load,
+				id: id,
+				filename: filename
+			});
+		this._watch(id, filename);
+	}
+	private static _triggerunload(id:string, filename:string) {
+		console.log(`unload ${id.replace(rootpath, ".")}(${filename.replace(rootpath, ".")})`);
+		this._trigger(<Message>{
+			event: Event.Unload,
+			id: id,
+			filename: filename
+		});
+	}
+	private static _require(id:string):any {
+		if (!id) throw new TypeError("null id");
+		let filename = require.resolve(id);
+		let m = require.cache[filename];
+		if (m) return m.exports;
+		this._triggerload(id, filename);
 		return require(id);
 	}
 	static require(id: string):any {
@@ -498,4 +569,5 @@ class Daemon {
 	}
 }
 
+Daemon._init();
 export = Daemon;

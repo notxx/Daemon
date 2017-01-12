@@ -70,7 +70,15 @@ interface Daemon {
     _moment(exp: string | number): moment.Moment;
 }
 declare class Daemon {
-    static _require(id: string): any;
+    static _init(): void;
+    private static _broadcast_message(source, message);
+    private static _onmessage(message);
+    private static _watch(id, filename);
+    private static _unload(message);
+    private static _trigger(message);
+    private static _triggerload(id, filename);
+    private static _triggerunload(id, filename);
+    private static _require(id);
     static require(id: string): any;
     private _db;
     private _handlers;
