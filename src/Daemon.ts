@@ -22,9 +22,9 @@ Promise.prototype.spread = function spread<TResult1, TResult2>(onfulfilled: (...
 		onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>) {
 	return this.then((result:any) => {
 		if (Array.isArray(result)) {
-			onfulfilled.apply(this, result);
+			return onfulfilled.apply(this, result);
 		} else {
-			onfulfilled.call(this, result);
+			return onfulfilled.call(this, result);
 		}
 	}, onrejected);
 };
@@ -118,12 +118,12 @@ class Daemon {
 	static _init() {
 		// console.log("_init");
 		if (cluster.isMaster)
-			cluster.on("online", worker=>{
+			cluster.on("online", worker=>{ // TODO
 				// console.log("worker online");
 				worker.on("message", message=>this._broadcast_message(worker, <Message>message));
 			});
-		else
-			process.on("message", (message:any)=>this._onmessage(message));
+		else if (cluster.isWorker)
+			cluster.worker.on("message", message=>this._onmessage(<Message>message));
 	}
 	private static _broadcast_message(source:cluster.Worker, message:Message) {
 		// console.log(`_broadcast_message ${source} ${message})`);
