@@ -10,10 +10,10 @@ let MongoStore = cm(session);
 Promise.prototype.spread = function spread(onfulfilled, onrejected) {
     return this.then((result) => {
         if (Array.isArray(result)) {
-            onfulfilled.apply(this, result);
+            return onfulfilled.apply(this, result);
         }
         else {
-            onfulfilled.call(this, result);
+            return onfulfilled.call(this, result);
         }
     }, onrejected);
 };
