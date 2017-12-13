@@ -74,8 +74,8 @@ class Daemon {
             cluster.on("online", worker => {
                 worker.on("message", message => this._broadcast_message(worker, message));
             });
-        else
-            process.on("message", (message) => this._onmessage(message));
+        else if (cluster.isWorker)
+            cluster.worker.on("message", message => this._onmessage(message));
     }
     static _broadcast_message(source, message) {
         for (let id in cluster.workers) {
@@ -107,10 +107,12 @@ class Daemon {
     }
     static _unload(message) {
         let m = require.cache[message.filename];
-        if (m && m.parent) {
-            m.parent.children.splice(m.parent.children.indexOf(m), 1);
+        if (m) {
+            if (m.parent) {
+                m.parent.children.splice(m.parent.children.indexOf(m), 1);
+            }
+            delete require.cache[message.filename];
         }
-        delete require.cache[message.filename];
     }
     static _trigger(message) {
         message.daemon = true;

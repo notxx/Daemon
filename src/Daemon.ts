@@ -10,7 +10,7 @@ import * as session from "express-session"
 import * as cm from "connect-mongo"
 let MongoStore = cm(session);
 
-// mongodb
+// Promise
 /** @interal */
 declare global {
 	interface Promise<T> {
@@ -40,9 +40,11 @@ function extend(origin:any, add:any): any {
 	}
 	return origin;
 }
-// Promise.prototype.then;
+
+// mongodb
 import * as mongodb from "mongodb"
 import MongoClient = mongodb.MongoClient
+
 // moment
 import * as moment from "moment"
 
@@ -315,6 +317,7 @@ class Daemon {
 			}
 		});
 	}
+	// region mongodb
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
 		// 替换express的json响应
 		let daemon = this,
@@ -556,6 +559,7 @@ class Daemon {
 			next();
 		});
 	}
+	// endregion
 	_moment(exp:string|number): moment.Moment { // 将输入的参数转化为moment类型的值
 		let exp0: number, m:moment.Moment;
 		if (typeof exp === 'string' && /^\d+$/.test(exp))
