@@ -404,7 +404,7 @@ class Daemon {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
                 let $fields = req.query.$fields || req.body.$fields;
-                return daemon.collection(col).then((collection) => {
+                return daemon.collection(col).then(collection => {
                     return collection.findOne(query || {}, fields || $fields || {});
                 });
             };
@@ -471,6 +471,11 @@ class Daemon {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
                 return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
+            };
+            req.bucket = bucketName => {
+                if (typeof bucketName !== "string")
+                    throw new Error("need bucketName");
+                return daemon._db.then(db => new mongodb.GridFSBucket(db, { bucketName: bucketName }));
             };
             req._ex = res.ex = (ex) => {
                 res.status(500).json(ex.message ? { message: ex.message, stack: ex.stack } : { ex: ex });

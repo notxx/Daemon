@@ -44,13 +44,14 @@ function extend(origin:any, add:any): any {
 // mongodb
 import * as mongodb from "mongodb"
 import MongoClient = mongodb.MongoClient
+import Db = mongodb.Db
 
 // moment
 import * as moment from "moment"
 
 declare module Daemon {
 	interface SessionOptions {
-		db: mongodb.Db;
+		db: Db;
 		ttl: number;
 		touchAfter: number; // 自动更新会话
 		sessionSecret: string; // 会话密钥
@@ -77,8 +78,8 @@ declare module Daemon {
 		findOneAndDelete:(col:string, filter:Object, options: { projection?: Object, sort?: Object, maxTimeMS?: number }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
 		findOneAndReplace:(col:string, filter:Object, replacement:Object, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
 		findOneAndUpdate:(col:string, filter:Object, update:Object, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+		bucket:(bucketName:string) => Promise<mongodb.GridFSBucket>;
 		_ex: (ex:Error | {}) => void;
-	
 		_export:(data:any, name:string[]) => void;
 		_exportInt:(data:any, name:string[]) => void;
 	}
@@ -203,8 +204,8 @@ class Daemon {
 			if (!id.startsWith(rootpath)) throw new TypeError("module out of jail");
 		}
 		return this._require(id);
-	}             
-	private _db: Promise<mongodb.Db>; // 打开的mongodb的promise
+	}
+	private _db: Promise<Db>; // 打开的mongodb的promise
 	private _handlers: any; // 遗留的处理程序入口
 	constructor(connection_string: string, username?: string, password?: string) {
 		if (username && password) {
@@ -215,7 +216,7 @@ class Daemon {
 		this._db = new Promise((resolve, reject) => {
 			MongoClient.connect(connection_string, {
 				promiseLibrary: Promise,
-			}).then((db:mongodb.Db) => {
+			}).then((db:Db) => {
 				if (username && password) {
 					db.authenticate(username, password)
 					.then(result => {
@@ -449,7 +450,7 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return daemon.collection(col).then((collection) => 
+				return daemon.collection(col).then((collection) =>
 					collection.find($query || {}, $fields || {}, $find.$skip, $find.$limit).sort($find.$sort));
 			};
 			req._find = res.find = (cursor: mongodb.Cursor) => {
@@ -481,7 +482,7 @@ class Daemon {
 			req.findOne = (col:string, query:{}, fields?:{}) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				let $fields = req.query.$fields || req.body.$fields;
-				return daemon.collection(col).then((collection) => {
+				return daemon.collection(col).then(collection => {
 					return collection.findOne(query || {}, fields || $fields || {});
 				});
 			};
@@ -540,6 +541,10 @@ class Daemon {
 			req.findOneAndUpdate = (col, filter, update, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
+			};
+			req.bucket = bucketName => {
+				if (typeof bucketName !== "string") throw new Error("need bucketName");
+				return daemon._db.then(db => new mongodb.GridFSBucket(db, { bucketName: bucketName }));
 			};
 			// 匹配输出的方便方法
 			req._ex = res.ex = (ex) => {

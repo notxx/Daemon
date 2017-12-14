@@ -7,10 +7,11 @@ declare global  {
     }
 }
 import * as mongodb from "mongodb";
+import Db = mongodb.Db;
 import * as moment from "moment";
 declare module Daemon {
     interface SessionOptions {
-        db: mongodb.Db;
+        db: Db;
         ttl: number;
         touchAfter: number;
         sessionSecret: string;
@@ -44,6 +45,7 @@ declare module Daemon {
         }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
         findOneAndReplace: (col: string, filter: Object, replacement: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
         findOneAndUpdate: (col: string, filter: Object, update: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+        bucket: (bucketName: string) => Promise<mongodb.GridFSBucket>;
         _ex: (ex: Error | {}) => void;
         _export: (data: any, name: string[]) => void;
         _exportInt: (data: any, name: string[]) => void;
