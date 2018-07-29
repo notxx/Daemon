@@ -1,7 +1,6 @@
-/// <reference types="node" />
-/// <reference types="express" />
 import * as express from "express";
-declare global  {
+import * as cm from "connect-mongo";
+declare global {
     interface Promise<T> {
         spread<TResult1, TResult2>(onfulfilled: (...values: any[]) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>): Promise<TResult1 | TResult2>;
     }
@@ -10,12 +9,16 @@ import * as mongodb from "mongodb";
 import Db = mongodb.Db;
 import * as moment from "moment";
 declare module Daemon {
-    interface SessionOptions {
-        db: Db;
-        ttl: number;
-        touchAfter: number;
+    interface SessionOptions extends cm.DefaultOptions {
         sessionSecret: string;
-        stringify: boolean;
+        db?: Db;
+        dbPromise?: Promise<Db>;
+    }
+    interface MongoSessionOptions extends SessionOptions, cm.NativeMongoOptions {
+        db: Db;
+    }
+    interface MongoPromiseSessionOptions extends SessionOptions, cm.NativeMongoPromiseOptions {
+        dbPromise: Promise<Db>;
     }
     interface Request extends express.Request {
         col: (collectionName: string) => Promise<mongodb.Collection>;
@@ -28,13 +31,13 @@ declare module Daemon {
         insert: (col: string, op: any, options?: mongodb.CollectionInsertOneOptions) => Promise<mongodb.WriteOpResult>;
         _insert: (r: mongodb.WriteOpResult) => void;
         insertMany: (col: string, docs: any[], options?: mongodb.CollectionInsertManyOptions) => Promise<mongodb.WriteOpResult>;
-        save: (col: string, op: any, options?: mongodb.CollectionOptions) => Promise<mongodb.WriteOpResult>;
+        save: (col: string, op: any, options?: mongodb.CommonOptions) => Promise<mongodb.WriteOpResult>;
         _save: (r: mongodb.WriteOpResult) => void;
         update: (col: string, query: any, op: any, options?: mongodb.ReplaceOneOptions & {
             multi?: boolean;
         }) => Promise<mongodb.WriteOpResult>;
         _update: (r: mongodb.WriteOpResult) => void;
-        remove: (col: string, query: any, options?: mongodb.CollectionOptions & {
+        remove: (col: string, query: any, options?: mongodb.CommonOptions & {
             single?: boolean;
         }) => Promise<mongodb.WriteOpResult>;
         _remove: (r: mongodb.WriteOpResult) => void;
@@ -67,24 +70,24 @@ declare module Daemon {
 interface Daemon {
     CGI(path: string, conf?: {}): void;
     collection(col: string): Promise<mongodb.Collection>;
-    session(options: Daemon.SessionOptions): express.RequestHandler;
+    session(options: (Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions)): express.RequestHandler;
     mongodb(): express.RequestHandler;
     _moment(exp: string | number): moment.Moment;
 }
 declare class Daemon {
     static _init(): void;
-    private static _broadcast_message(source, message);
-    private static _onmessage(message);
-    private static _watch(id, filename);
-    private static _unload(message);
-    private static _trigger(message);
-    private static _triggerload(id, filename);
-    private static _triggerunload(id, filename);
-    private static _require(id);
+    private static _broadcast_message;
+    private static _onmessage;
+    private static _watch;
+    private static _unload;
+    private static _trigger;
+    private static _triggerload;
+    private static _triggerunload;
+    private static _require;
     static require(id: string): any;
     private _db;
     private _handlers;
-    constructor(connection_string: string, username?: string, password?: string);
+    constructor(uri: string, db: string, username?: string, password?: string);
     handlers(handlers: {}): void;
     private conf;
     hot(id: string): void;

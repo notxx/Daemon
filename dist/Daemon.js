@@ -35,40 +35,10 @@ var Event;
     Event[Event["Load"] = 0] = "Load";
     Event[Event["Unload"] = 1] = "Unload";
 })(Event || (Event = {}));
-const rootpath = path.dirname(module.parent.filename);
+const rootpath = module.parent
+    ? path.dirname(module.parent.filename)
+    : __dirname;
 class Daemon {
-    constructor(connection_string, username, password) {
-        if (username && password) {
-            console.log(`connect_mongodb(${connection_string}, ${username}, ********)`);
-        }
-        else {
-            console.log(`connect_mongodb(${connection_string})`);
-        }
-        this._db = new Promise((resolve, reject) => {
-            MongoClient.connect(connection_string, {
-                promiseLibrary: Promise,
-            }).then((db) => {
-                if (username && password) {
-                    db.authenticate(username, password)
-                        .then(result => {
-                        console.log(`mc.authenticate() => ${result}`);
-                        if (result)
-                            resolve(db);
-                        else
-                            reject("username/password");
-                    }, err => {
-                        console.log(`mc.authenticate() error: ${err.errmsg}`);
-                        reject(err);
-                    });
-                }
-                else {
-                    console.log("mc.connected()");
-                    resolve(db);
-                }
-            });
-        });
-        this._handlers = {};
-    }
     static _init() {
         if (cluster.isMaster)
             cluster.on("online", worker => {
@@ -158,6 +128,26 @@ class Daemon {
         }
         return this._require(id);
     }
+    constructor(uri, db, username, password) {
+        if (!uri)
+            throw new Error("need uri");
+        if (!db)
+            throw new Error("need db");
+        if (username && password) {
+            console.log(`connect_mongodb(${uri}, ${username}, ********)`);
+        }
+        else {
+            console.log(`connect_mongodb(${uri})`);
+        }
+        let opt = {
+            promiseLibrary: Promise,
+            useNewUrlParser: true
+        };
+        if (username && password)
+            opt.auth = { user: username, password: password };
+        this._db = MongoClient.connect(uri, opt).then(client => client.db(db));
+        this._handlers = {};
+    }
     handlers(handlers) {
         this._handlers = extend({}, handlers);
     }
@@ -216,29 +206,33 @@ class Daemon {
             });
         }
         let opt = {
-            db: null,
             ttl: 30 * 24 * 60 * 60,
             touchAfter: 3600,
             sessionSecret: "session secret",
             stringify: false
         };
-        extend(opt, options);
-        if (opt.db) {
+        if (options && options.db) {
+            let opt = {
+                ttl: 30 * 24 * 60 * 60,
+                touchAfter: 3600,
+                sessionSecret: "session secret",
+                stringify: false,
+                db: null
+            };
+            Object.assign(opt, options);
             return _session(opt);
         }
-        let stub = null;
-        this._db.then((db) => {
-            opt.db = db;
-            stub = _session(opt);
-        });
-        return (function (req, res, next) {
-            if (stub) {
-                stub.apply(this, [].slice.apply(arguments));
-            }
-            else {
-                res.status(500).send("session not ready");
-            }
-        });
+        else {
+            let opt = {
+                ttl: 30 * 24 * 60 * 60,
+                touchAfter: 3600,
+                sessionSecret: "session secret",
+                stringify: false,
+                dbPromise: this._db
+            };
+            Object.assign(opt, options);
+            return _session(opt);
+        }
     }
     mongodb() {
         let daemon = this, _json = express.response.json;
@@ -370,7 +364,9 @@ class Daemon {
                     default:
                         $sort = { _id: 1 };
                 }
-                return daemon.collection(col).then((collection) => collection.find($query || {}, $fields || {}, $find.$skip, $find.$limit).sort($find.$sort));
+                return daemon.collection(col)
+                    .then((collection) => collection.find($query || {}, $fields || {}))
+                    .then(cursor => cursor.skip($find.$skip).limit($find.$limit).sort($find.$sort));
             };
             req._find = res.find = (cursor) => {
                 if (req.$find) {

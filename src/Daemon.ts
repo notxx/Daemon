@@ -50,12 +50,16 @@ import Db = mongodb.Db
 import * as moment from "moment"
 
 declare module Daemon {
-	interface SessionOptions {
-		db: Db;
-		ttl: number;
-		touchAfter: number; // 自动更新会话
+	interface SessionOptions extends cm.DefaultOptions {
 		sessionSecret: string; // 会话密钥
-		stringify: boolean;
+		db?: Db;
+		dbPromise?: Promise<Db>;
+	}
+	interface MongoSessionOptions extends SessionOptions, cm.NativeMongoOptions {
+		db: Db;
+	}
+	interface MongoPromiseSessionOptions extends SessionOptions, cm.NativeMongoPromiseOptions {
+		dbPromise: Promise<Db>;
 	}
 
 	interface Request extends express.Request {
@@ -69,11 +73,11 @@ declare module Daemon {
 		insert:(col:string, op:any, options?: mongodb.CollectionInsertOneOptions) => Promise<mongodb.WriteOpResult>;
 		_insert:(r:mongodb.WriteOpResult) => void;
 		insertMany:(col:string, docs:any[], options?: mongodb.CollectionInsertManyOptions) => Promise<mongodb.WriteOpResult>;
-		save:(col:string, op:any, options?: mongodb.CollectionOptions) => Promise<mongodb.WriteOpResult>;
+		save:(col:string, op:any, options?: mongodb.CommonOptions) => Promise<mongodb.WriteOpResult>;
 		_save:(r:mongodb.WriteOpResult) => void;
 		update:(col:string, query:any, op:any, options?: mongodb.ReplaceOneOptions & { multi?: boolean; }) => Promise<mongodb.WriteOpResult>;
 		_update:(r:mongodb.WriteOpResult) => void;
-		remove:(col:string, query:any, options?: mongodb.CollectionOptions & { single?: boolean; }) => Promise<mongodb.WriteOpResult>;
+		remove:(col:string, query:any, options?: mongodb.CommonOptions & { single?: boolean; }) => Promise<mongodb.WriteOpResult>;
 		_remove:(r:mongodb.WriteOpResult) => void;
 		findOneAndDelete:(col:string, filter:Object, options: { projection?: Object, sort?: Object, maxTimeMS?: number }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
 		findOneAndReplace:(col:string, filter:Object, replacement:Object, options?:mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
@@ -100,7 +104,7 @@ declare module Daemon {
 interface Daemon {
 	CGI(path: string, conf?: {}): void
 	collection(col:string): Promise<mongodb.Collection>
-	session(options: Daemon.SessionOptions): express.RequestHandler
+	session(options: (Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions)): express.RequestHandler
 	mongodb(): express.RequestHandler
 	_moment(exp:string|number): moment.Moment
 }
@@ -115,8 +119,10 @@ interface Message {
 	filename: string
 }
 
-const rootpath = path.dirname(module.parent.filename); // 使用父模块的相对路径
-
+const rootpath = module.parent
+		? path.dirname(module.parent.filename) // 使用父模块的相对路径
+		: __dirname;
+		
 class Daemon {
 	static _init() {
 		// console.log("_init");
@@ -207,34 +213,26 @@ class Daemon {
 	}
 	private _db: Promise<Db>; // 打开的mongodb的promise
 	private _handlers: any; // 遗留的处理程序入口
-	constructor(connection_string: string, username?: string, password?: string) {
+	/**
+	 * @param uri 链接字符串
+	 * @param db 数据库
+	 * @param username 用户名
+	 * @param password 密码
+	 */
+	constructor(uri: string, db: string, username?: string, password?: string) {
+		if (!uri) throw new Error("need uri");
+		if (!db) throw new Error("need db");
 		if (username && password) {
-			console.log(`connect_mongodb(${connection_string}, ${username}, ********)`);
+			console.log(`connect_mongodb(${uri}, ${username}, ********)`);
 		} else {
-			console.log(`connect_mongodb(${connection_string})`);
+			console.log(`connect_mongodb(${uri})`);
 		}
-		this._db = new Promise((resolve, reject) => {
-			MongoClient.connect(connection_string, {
-				promiseLibrary: Promise,
-			}).then((db:Db) => {
-				if (username && password) {
-					db.authenticate(username, password)
-					.then(result => {
-						console.log(`mc.authenticate() => ${result}`);
-						if (result)
-							resolve(db);
-						else
-							reject("username/password");
-					}, err => {
-						console.log(`mc.authenticate() error: ${err.errmsg}`);
-						reject(err);
-					});
-				} else {
-					console.log("mc.connected()");
-					resolve(db);
-				}
-			});
-		});
+		let opt:mongodb.MongoClientOptions = {
+			promiseLibrary: Promise,
+			useNewUrlParser: true
+		};
+		if (username && password) opt.auth = { user: username, password: password };
+		this._db = MongoClient.connect(uri, opt).then(client => client.db(db));
 		this._handlers = {};
 	}
 	handlers(handlers:{}) {
@@ -285,7 +283,7 @@ class Daemon {
 		return this._db.then((db) => db.collection(col));
 	}
 	session(options: Daemon.SessionOptions) {
-		function _session(opt: Daemon.SessionOptions) {
+		function _session(opt: Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions) {
 			return session({
 				secret: opt.sessionSecret,
 				resave: true,
@@ -295,28 +293,32 @@ class Daemon {
 			});
 		}
 		let opt: Daemon.SessionOptions = {
-			db: null,
 			ttl: 30 * 24 * 60 * 60,
 			touchAfter: 3600, // 每小时自动更新会话一次
 			sessionSecret: "session secret",
 			stringify: false
 		};
-		extend(opt, options);
-		if (opt.db) { return _session(opt); }
-		let stub:express.RequestHandler = null;
-		this._db.then((db) => {
-			opt.db = db;
-			stub = _session(opt);
-		});
-		return (function(req: express.Request,
-				res: express.Response,
-				next: Function) {
-			if (stub) {
-				stub.apply(this, [].slice.apply(arguments));
-			} else {
-				res.status(500).send("session not ready");
-			}
-		});
+		if (options && options.db) {
+			let opt: Daemon.MongoSessionOptions = {
+				ttl: 30 * 24 * 60 * 60,
+				touchAfter: 3600, // 每小时自动更新会话一次
+				sessionSecret: "session secret",
+				stringify: false,
+				db: null
+			};
+			Object.assign(opt, options);
+			return _session(opt);
+		} else {
+			let opt: Daemon.MongoPromiseSessionOptions = {
+				ttl: 30 * 24 * 60 * 60,
+				touchAfter: 3600, // 每小时自动更新会话一次
+				sessionSecret: "session secret",
+				stringify: false,
+				dbPromise: this._db
+			};
+			Object.assign(opt, options);
+			return _session(opt);
+		}
 	}
 	// region mongodb
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
@@ -450,8 +452,9 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return daemon.collection(col).then((collection) =>
-					collection.find($query || {}, $fields || {}, $find.$skip, $find.$limit).sort($find.$sort));
+				return daemon.collection(col)
+					.then((collection) => collection.find($query || {}, $fields || {}))
+					.then(cursor => cursor.skip($find.$skip).limit($find.$limit).sort($find.$sort));
 			};
 			req._find = res.find = (cursor: mongodb.Cursor) => {
 				if (req.$find) {
