@@ -66,6 +66,13 @@ declare module Daemon {
     interface Route {
         (req: Request, res: Response, ...data: any[]): void;
     }
+    class Spawn {
+        conf: any;
+        global: any;
+        daemon: Daemon;
+        constructor(callback: (req: Daemon.Request, res: Daemon.Response, next: Function) => any);
+        exec: (req: Request, res: Response, next: Function) => any;
+    }
 }
 interface Daemon {
     CGI(path: string, conf?: {}): void;

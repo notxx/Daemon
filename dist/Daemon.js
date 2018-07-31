@@ -17,16 +17,6 @@ Promise.prototype.spread = function spread(onfulfilled, onrejected) {
         }
     }, onrejected);
 };
-function extend(origin, add) {
-    if (add === null || typeof add !== 'object')
-        return origin;
-    let keys = Object.keys(add);
-    let i = keys.length;
-    while (i--) {
-        origin[keys[i]] = add[keys[i]];
-    }
-    return origin;
-}
 const mongodb = require("mongodb");
 var MongoClient = mongodb.MongoClient;
 const moment = require("moment");
@@ -149,7 +139,7 @@ class Daemon {
         this._handlers = {};
     }
     handlers(handlers) {
-        this._handlers = extend({}, handlers);
+        this._handlers = Object.assign({}, handlers);
     }
     CGI(basepath, conf) {
         let domainCache = {};
@@ -185,7 +175,20 @@ class Daemon {
             else {
                 d = domainCache[key];
             }
-            d.run(() => Daemon._require(absolute).call(conf[key] || this, req, res, next));
+            d.add(req);
+            d.add(res);
+            d.run(() => {
+                const local = Daemon._require(absolute);
+                if (typeof (local) === "function") {
+                    local.call(conf[key] || this, req, res, next);
+                }
+                else if (local instanceof Daemon.Spawn) {
+                    local.conf = conf[key];
+                    local.global = conf;
+                    local.daemon = this;
+                    local.exec(req, res, next);
+                }
+            });
         });
     }
     hot(id) {
@@ -325,12 +328,11 @@ class Daemon {
                 body = status;
                 status = null;
             }
-            options = extend({
+            options = Object.assign({
                 indent: 5,
                 fields: {},
                 fieldsDefault: { name: 1 }
-            }, options);
-            options = extend(options, resp.$json$options);
+            }, options, resp.$json$options);
             if (typeof body === 'object') {
                 replace(options.indent, [], body).then((value) => {
                     if (status)
@@ -501,5 +503,17 @@ class Daemon {
         return m.isValid() ? m : null;
     }
 }
+Daemon.Spawn = class Spawn {
+    constructor(handler) {
+        if (typeof (handler) !== "function")
+            throw new TypeError("handler");
+        this.handler = handler;
+    }
+    exec(req, res, next) {
+        if (typeof (this.handler) !== "function")
+            throw new TypeError("handler");
+        this.handler(req, res, next);
+    }
+};
 Daemon._init();
 module.exports = Daemon;

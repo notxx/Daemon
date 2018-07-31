@@ -29,18 +29,6 @@ Promise.prototype.spread = function spread<TResult1, TResult2>(onfulfilled: (...
 	}, onrejected);
 };
 
-function extend(origin:any, add:any): any {
-	// Don't do anything if add isn't an object
-	if (add === null || typeof add !== 'object') return origin;
-
-	let keys = Object.keys(add);
-	let i = keys.length;
-	while (i--) {
-		origin[keys[i]] = add[keys[i]];
-	}
-	return origin;
-}
-
 // mongodb
 import * as mongodb from "mongodb"
 import MongoClient = mongodb.MongoClient
@@ -100,6 +88,13 @@ declare module Daemon {
 	interface Route {
 		(req: Request, res: Response, ...data:any[]): void;
 	}
+	class Spawn {
+		conf: any;
+		global: any;
+		daemon: Daemon;
+		constructor(callback:(req: Daemon.Request, res: Daemon.Response, next: Function) => any);
+		exec: (req: Request, res: Response, next: Function) => any;
+	}
 }
 interface Daemon {
 	CGI(path: string, conf?: {}): void
@@ -122,8 +117,14 @@ interface Message {
 const rootpath = module.parent
 		? path.dirname(module.parent.filename) // 使用父模块的相对路径
 		: __dirname;
-		
+
 class Daemon {
+	// static Spawn = class Spawn {
+	// 	conf: any;
+	// 	global: any;
+	// 	daemon: Daemon;
+	// 	exec: (req: Daemon.Request, res: Daemon.Response, next: Function) => any;
+	// }
 	static _init() {
 		// console.log("_init");
 		if (cluster.isMaster)
@@ -236,7 +237,7 @@ class Daemon {
 		this._handlers = {};
 	}
 	handlers(handlers:{}) {
-		this._handlers = extend({}, handlers);
+		this._handlers = Object.assign({}, handlers);
 	}
 	private conf: any;
 	CGI(basepath: string, conf: any) {
@@ -251,7 +252,7 @@ class Daemon {
 			basepath = path.join(rootpath, basepath); // 使用父模块的相对路径
 			if (basepath.indexOf(rootpath) != 0) throw new TypeError("basepath out of jail");
 		}
-		return ((req:express.Request, res:express.Response, next:Function) => {
+		return ((req:Daemon.Request, res:Daemon.Response, next:Function) => {
 			let absolute = path.join(basepath, req.path);
 			if (absolute.indexOf(basepath) != 0) return res.status(500).send({ error: "web-module out of jail" });
 			try {
@@ -273,7 +274,20 @@ class Daemon {
 			} else {
 				d = domainCache[key];
 			}
-			d.run(() => Daemon._require(absolute).call(conf[key] || this, req, res, next));
+			d.add(req);
+			d.add(res);
+			d.run(() => {
+				const local = Daemon._require(absolute);
+				if (typeof(local) === "function") {
+					(<Function>local).call(conf[key] || this, req, res, next);
+				// } else if (typeof(local.exec) === "function" && local.exec.length === 3) {
+				} else if (local instanceof Daemon.Spawn) {
+					local.conf = conf[key];
+					local.global = conf;
+					local.daemon = this;
+					local.exec(req, res, next);
+				}
+			});
 		});
 	}
 	hot(id:string) {
@@ -409,12 +423,11 @@ class Daemon {
 				body = status;
 				status = null;
 			}
-			options = extend({
+			options = Object.assign({
 				indent: 5,
 				fields: {},
 				fieldsDefault: { name: 1 }
-			}, options);
-			options = extend(options, resp.$json$options);
+			}, options, resp.$json$options);
 			if (typeof body === 'object') {
 				replace(options.indent, [], body).then((value:any) => {
 					if (status)
@@ -580,6 +593,19 @@ class Daemon {
 		return m.isValid() ? m : null;
 	}
 }
-
+Daemon.Spawn = class Spawn {
+	conf: any;
+	global: any;
+	daemon: Daemon;
+	constructor(handler:(req: Daemon.Request, res: Daemon.Response, next: Function) => any) {
+		if (typeof(handler) !== "function") throw new TypeError("handler");
+		this.handler = handler;
+	}
+	private handler: (req: Daemon.Request, res: Daemon.Response, next: Function) => void;
+	exec(req: Daemon.Request, res: Daemon.Response, next: Function): void {
+		if (typeof(this.handler) !== "function") throw new TypeError("handler");
+		this.handler(req, res, next);
+	}
+}
 Daemon._init();
 export = Daemon;
