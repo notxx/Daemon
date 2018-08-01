@@ -119,12 +119,6 @@ const rootpath = module.parent
 		: __dirname;
 
 class Daemon {
-	// static Spawn = class Spawn {
-	// 	conf: any;
-	// 	global: any;
-	// 	daemon: Daemon;
-	// 	exec: (req: Daemon.Request, res: Daemon.Response, next: Function) => any;
-	// }
 	static _init() {
 		// console.log("_init");
 		if (cluster.isMaster)
@@ -278,10 +272,11 @@ class Daemon {
 			d.add(res);
 			d.run(() => {
 				const local = Daemon._require(absolute);
-				if (typeof(local) === "function") {
+				if (!local) {
+					res.status(404).send({ error: "module not found?" });
+				} else if (typeof(local) === "function") {
 					(<Function>local).call(conf[key] || this, req, res, next);
-				// } else if (typeof(local.exec) === "function" && local.exec.length === 3) {
-				} else if (local instanceof Daemon.Spawn) {
+				} else if (typeof(local.handler) === "function") { // Spawn
 					local.conf = conf[key];
 					local.global = conf;
 					local.daemon = this;
@@ -292,9 +287,9 @@ class Daemon {
 	}
 	hot(id:string) {
 	}
-	collection(col:string) {
+	async collection(col:string) {
 		if (typeof col !== "string") throw new Error("need collectionName");
-		return this._db.then((db) => db.collection(col));
+		return (await this._db).collection(col);
 	}
 	session(options: Daemon.SessionOptions) {
 		function _session(opt: Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions) {
@@ -339,61 +334,61 @@ class Daemon {
 		// 替换express的json响应
 		let daemon = this,
 			_json = express.response.json;
-		express.response.json = function json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
-			let replacer = (indent: number, path: Array<string>, value: any) => { // 实际展开值的函数
+		express.response.json = async function json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
+			const promiseJSON = async (indent: number, path: Array<string>, value: any) => { // 实际展开值的函数
 				//console.log(`replacer ${indent} ${path.join('.')}`);
 				if (typeof value !== "object" || !value || indent < 0) { return value; }
 				if (Array.isArray(value)) { // Array
-					let promises = Array<Promise<any>>();
-					(<Array<any>>value).forEach((v, i) => {
+					let promises:Promise<any>[] = [];
+					value.forEach(v => {
 						let sub_path = path.slice();
 						sub_path.push('$');
-						promises.push(replacer(indent - 1, sub_path, v));
+						promises.push(promiseJSON(indent - 1, sub_path, v));
 					});
 					//console.log(promises);
 					return Promise.all(promises);
 				} else if (typeof value === "string") {
 					return value;
+				} else if (value instanceof Promise || // Promise
+						(typeof(value.then) === "function")) { // or PromiseLike
+					const t = {};
+					return Promise.race([ value, t ])
+					.then(v => (v === t) ? "pending" : "resolved", () => "rejected")
+					.then(s => ({ $promise: s }));
 				} else if (value instanceof Date) {
 					return { $date: value.getTime() };
-				} else if (value.toHexString) { // ObjectID
+				} else if (typeof(value.toHexString) === "function") { // ObjectId-ish
 					return { $id: value.toHexString() };
-				} else if (value.namespace && value.oid) {
+				} else if (value.namespace && value.oid) { // DBRef-ish
 					let fields = options.fields[value.namespace];
 					if (fields === false) { return value; }
-					return daemon.collection(value.namespace)
-					.then((col) => {
-						return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
-					});
+					const col = await daemon.collection(value.namespace)
+					return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
 				} else {
 					//console.log(`replacer ${con.name}`);
 					return replace(indent - 1, path, value);
 				}
 			};
-			let replace = (indent: number, path: Array<string>, obj: any) => { // 决定哪些值应予展开的函数
+			const replace = async (indent: number, path: Array<string>, obj: any) => { // 决定哪些值应予展开的函数
 				//console.log(`replace ${indent} ${path.join('.')}`);
-				if (typeof obj !== "object" || !obj || indent <= 0) { return Promise.resolve(obj); }
+				if (typeof obj !== "object" || !obj || indent <= 0) { return obj; }
 				if (!path) path = [];
-				let promises = Array<any>(),
-					promise:Promise<any>;
+				const promises:Promise<any>[] = [];
 				if (Array.isArray(obj)) {
-					let indexes = Array<number>(),
-						resulta = Array<any>();
-					(<Array<any>>obj).forEach((v, i) => {
+					const indexes:number[] = [],
+						resulta:any[] = [];
+					obj.forEach((v, i) => {
 						indexes.push(i);
 						let sub_path = path.slice();
 						sub_path.push('$');
-						promises.push(replacer(indent - 1, sub_path, v));
+						promises.push(promiseJSON(indent - 1, sub_path, v));
 					});
-					promise = new Promise((resolve, reject) => {
-						Promise.all(promises).then((values) => {
-							//console.log(`replace resolve ${keys}`);
-							indexes.forEach((index, i) => {
-								resulta[index] = values[i];
-							});
-							resolve(resulta);
-						}, reject);
+					let values = await Promise.all(promises);
+					// console.log(`replace resolve ${indexes}`);
+					indexes.forEach((index, i) => {
+						resulta[index] = values[i];
 					});
+					return resulta;
 				} else {
 					let keys = Array<string>(),
 						resulto:any = {};
@@ -402,19 +397,15 @@ class Daemon {
 						keys.push(key);
 						let sub_path = path.slice();
 						sub_path.push(key);
-						promises.push(replacer(indent - 1, sub_path, obj[key]));
+						promises.push(promiseJSON(indent - 1, sub_path, obj[key]));
 					}
-					promise = new Promise((resolve, reject) => {
-						Promise.all(promises).then((values) => {
-							//console.log(`replace resolve ${keys}`);
-							keys.forEach((key, i) => {
-								resulto[key] = values[i];
-							});
-							resolve(resulto);
-						}, reject);
+					let values = await Promise.all(promises);
+					//console.log(`replace resolve ${keys}`);
+					keys.forEach((key, i) => {
+						resulto[key] = values[i];
 					});
+					return resulto;
 				}
-				return promise;
 			}
 
 			let resp: Daemon.Response = this;
@@ -428,22 +419,18 @@ class Daemon {
 				fields: {},
 				fieldsDefault: { name: 1 }
 			}, options, resp.$json$options);
+			if (status)
+				resp.status(status);
 			if (typeof body === 'object') {
-				replace(options.indent, [], body).then((value:any) => {
-					if (status)
-						resp.status(status);
-					_json.apply(resp, [ value ]);
-				});
+				_json.apply(resp, [ (await replace(options.indent, [], body)) ]);
 			} else {
-				if (status)
-					resp.status(status);
 				_json.apply(resp, [ body ]);
 			}
 		}
 		return ((req:Daemon.Request, res:Daemon.Response, next:Function) => {
 			// 自动注入某些通用参数（排序、分页等）
 			req.col = daemon.collection.bind(this);
-			req.find = (col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => {
+			req.find = async (col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				let $find:any = req.$find = {},
 					$query = $find.$query = query,
@@ -465,51 +452,34 @@ class Daemon {
 				default:
 					$sort = { _id: 1 };
 				}
-				return daemon.collection(col)
-					.then((collection) => collection.find($query || {}, $fields || {}))
-					.then(cursor => cursor.skip($find.$skip).limit($find.$limit).sort($find.$sort));
+				return (await daemon.collection(col))
+					.find($query || {}, $fields || {})
+					.skip($find.$skip).limit($find.$limit).sort($find.$sort);
 			};
-			req._find = res.find = (cursor: mongodb.Cursor) => {
-				if (req.$find) {
-					let $find:{ $sort:any, $skip:number, $limit:number, $fields:any } = req.$find;
-					return Promise.all([
-						cursor.toArray(),
-						cursor.count(false),
-						$find.$sort,
-						$find.$skip,
-						$find.$limit,
-						$find.$fields
-					]).spread((array:any, count:any, sort:any, skip:any, limit:any, fields:any) => {
-						res.json({
-							$array: array,
-							$count: count,
-							$sort: sort,
-							$skip: skip,
-							$limit: limit,
-							$fields: fields
-						});
-					});
-				} else if (cursor.toArray) {
-					cursor.toArray().then(array => res.json(array));
+			req._find = res.find = async (cursor: mongodb.Cursor) => {
+				if (typeof(cursor.toArray) === "function" && typeof(cursor.count) === "function" // check cursor
+						&& req.$find) { // and $find criteria
+					let $find = Object.assign({}, req.$find);
+					$find.$array = await cursor.toArray();
+					$find.$count = await cursor.count(false);
+					res.json($find);
+				} else if (typeof(cursor.toArray) === "function") { // fallback to toArray()
+					res.json(await cursor.toArray());
 				} else {
 					res.json(cursor);
 				}
 			};
-			req.findOne = (col:string, query:{}, fields?:{}) => {
+			req.findOne = async (col:string, query:{}, fields?:{}) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				let $fields = req.query.$fields || req.body.$fields;
-				return daemon.collection(col).then(collection => {
-					return collection.findOne(query || {}, fields || $fields || {});
-				});
+				return (await daemon.collection(col)).findOne(query || {}, fields || $fields || {});
 			};
 			req._array = req._findOne = res.array = res.findOne = (r:any) => {
 				res.json(r);
 			};
-			req.insert = (col, op, options) => {
+			req.insert = async (col, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => {
-					return collection.insert(op, options);
-				});
+				return (await daemon.collection(col)).insert(op, options);
 			};
 			req._insert = res.insert = r => {
 				if (r.result)
@@ -517,9 +487,9 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.insertMany = (col, op, options) => {
+			req.insertMany = async (col, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.insertMany(op, options));
+				return (await daemon.collection(col)).insertMany(op, options);
 			};
 			res.insertMany = r => {
 				if (r.result && r.ops)
@@ -527,17 +497,17 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.save = (col, op, options) => {
+			req.save = async (col, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.save(op, options));
+				return (await daemon.collection(col)).save(op, options);
 			};
-			req.update = (col, query, op, options) => {
+			req.update = async (col, query, op, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.update(query, op, options));
+				return (await daemon.collection(col)).update(query, op, options);
 			};
-			req.remove = (col, query, options) => {
+			req.remove = async (col, query, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.remove(query, options));
+				return (await daemon.collection(col)).remove(query, options);
 			};
 			req._remove = req._save = req._update = res.update = r => {
 				let result = r.result;
@@ -546,21 +516,21 @@ class Daemon {
 				else
 					res.json(r);
 			};
-			req.findOneAndDelete = (col, filter, options) => {
+			req.findOneAndDelete = async (col, filter, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.findOneAndDelete(filter, options));
+				return (await daemon.collection(col)).findOneAndDelete(filter, options);
 			};
-			req.findOneAndReplace = (col, filter, replacement, options) => {
+			req.findOneAndReplace = async (col, filter, replacement, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.findOneAndReplace(filter, replacement, options));
+				return (await daemon.collection(col)).findOneAndReplace(filter, replacement, options);
 			};
-			req.findOneAndUpdate = (col, filter, update, options) => {
+			req.findOneAndUpdate = async (col, filter, update, options) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
+				return (await daemon.collection(col)).findOneAndUpdate(filter, update, options);
 			};
-			req.bucket = bucketName => {
+			req.bucket = async bucketName => {
 				if (typeof bucketName !== "string") throw new Error("need bucketName");
-				return daemon._db.then(db => new mongodb.GridFSBucket(db, { bucketName: bucketName }));
+				return new mongodb.GridFSBucket((await daemon._db), { bucketName: bucketName });
 			};
 			// 匹配输出的方便方法
 			req._ex = res.ex = (ex) => {

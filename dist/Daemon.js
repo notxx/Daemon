@@ -179,10 +179,13 @@ class Daemon {
             d.add(res);
             d.run(() => {
                 const local = Daemon._require(absolute);
-                if (typeof (local) === "function") {
+                if (!local) {
+                    res.status(404).send({ error: "module not found?" });
+                }
+                else if (typeof (local) === "function") {
                     local.call(conf[key] || this, req, res, next);
                 }
-                else if (local instanceof Daemon.Spawn) {
+                else if (typeof (local.handler) === "function") {
                     local.conf = conf[key];
                     local.global = conf;
                     local.daemon = this;
@@ -193,10 +196,10 @@ class Daemon {
     }
     hot(id) {
     }
-    collection(col) {
+    async collection(col) {
         if (typeof col !== "string")
             throw new Error("need collectionName");
-        return this._db.then((db) => db.collection(col));
+        return (await this._db).collection(col);
     }
     session(options) {
         function _session(opt) {
@@ -239,27 +242,34 @@ class Daemon {
     }
     mongodb() {
         let daemon = this, _json = express.response.json;
-        express.response.json = function json(status, body, options) {
-            let replacer = (indent, path, value) => {
+        express.response.json = async function json(status, body, options) {
+            const promiseJSON = async (indent, path, value) => {
                 if (typeof value !== "object" || !value || indent < 0) {
                     return value;
                 }
                 if (Array.isArray(value)) {
-                    let promises = Array();
-                    value.forEach((v, i) => {
+                    let promises = [];
+                    value.forEach(v => {
                         let sub_path = path.slice();
                         sub_path.push('$');
-                        promises.push(replacer(indent - 1, sub_path, v));
+                        promises.push(promiseJSON(indent - 1, sub_path, v));
                     });
                     return Promise.all(promises);
                 }
                 else if (typeof value === "string") {
                     return value;
                 }
+                else if (value instanceof Promise ||
+                    (typeof (value.then) === "function")) {
+                    const t = {};
+                    return Promise.race([value, t])
+                        .then(v => (v === t) ? "pending" : "resolved", () => "rejected")
+                        .then(s => ({ $promise: s }));
+                }
                 else if (value instanceof Date) {
                     return { $date: value.getTime() };
                 }
-                else if (value.toHexString) {
+                else if (typeof (value.toHexString) === "function") {
                     return { $id: value.toHexString() };
                 }
                 else if (value.namespace && value.oid) {
@@ -267,38 +277,33 @@ class Daemon {
                     if (fields === false) {
                         return value;
                     }
-                    return daemon.collection(value.namespace)
-                        .then((col) => {
-                        return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
-                    });
+                    const col = await daemon.collection(value.namespace);
+                    return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
                 }
                 else {
                     return replace(indent - 1, path, value);
                 }
             };
-            let replace = (indent, path, obj) => {
+            const replace = async (indent, path, obj) => {
                 if (typeof obj !== "object" || !obj || indent <= 0) {
-                    return Promise.resolve(obj);
+                    return obj;
                 }
                 if (!path)
                     path = [];
-                let promises = Array(), promise;
+                const promises = [];
                 if (Array.isArray(obj)) {
-                    let indexes = Array(), resulta = Array();
+                    const indexes = [], resulta = [];
                     obj.forEach((v, i) => {
                         indexes.push(i);
                         let sub_path = path.slice();
                         sub_path.push('$');
-                        promises.push(replacer(indent - 1, sub_path, v));
+                        promises.push(promiseJSON(indent - 1, sub_path, v));
                     });
-                    promise = new Promise((resolve, reject) => {
-                        Promise.all(promises).then((values) => {
-                            indexes.forEach((index, i) => {
-                                resulta[index] = values[i];
-                            });
-                            resolve(resulta);
-                        }, reject);
+                    let values = await Promise.all(promises);
+                    indexes.forEach((index, i) => {
+                        resulta[index] = values[i];
                     });
+                    return resulta;
                 }
                 else {
                     let keys = Array(), resulto = {};
@@ -309,18 +314,14 @@ class Daemon {
                         keys.push(key);
                         let sub_path = path.slice();
                         sub_path.push(key);
-                        promises.push(replacer(indent - 1, sub_path, obj[key]));
+                        promises.push(promiseJSON(indent - 1, sub_path, obj[key]));
                     }
-                    promise = new Promise((resolve, reject) => {
-                        Promise.all(promises).then((values) => {
-                            keys.forEach((key, i) => {
-                                resulto[key] = values[i];
-                            });
-                            resolve(resulto);
-                        }, reject);
+                    let values = await Promise.all(promises);
+                    keys.forEach((key, i) => {
+                        resulto[key] = values[i];
                     });
+                    return resulto;
                 }
-                return promise;
             };
             let resp = this;
             if (typeof status === 'object') {
@@ -333,22 +334,18 @@ class Daemon {
                 fields: {},
                 fieldsDefault: { name: 1 }
             }, options, resp.$json$options);
+            if (status)
+                resp.status(status);
             if (typeof body === 'object') {
-                replace(options.indent, [], body).then((value) => {
-                    if (status)
-                        resp.status(status);
-                    _json.apply(resp, [value]);
-                });
+                _json.apply(resp, [(await replace(options.indent, [], body))]);
             }
             else {
-                if (status)
-                    resp.status(status);
                 _json.apply(resp, [body]);
             }
         };
         return ((req, res, next) => {
             req.col = daemon.collection.bind(this);
-            req.find = (col, query, fields, sort, skip, limit) => {
+            req.find = async (col, query, fields, sort, skip, limit) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
                 let $find = req.$find = {}, $query = $find.$query = query, $sort = $find.$sort = sort || req.query.$sort || req.body.$sort, $skip = $find.$skip = skip || req.query.$skip || req.body.$skip || 0, $limit = $find.$limit = limit || req.query.$limit || req.body.$limit || 20, $fields = $find.$fields = fields || req.query.$fields || req.body.$fields;
@@ -366,55 +363,38 @@ class Daemon {
                     default:
                         $sort = { _id: 1 };
                 }
-                return daemon.collection(col)
-                    .then((collection) => collection.find($query || {}, $fields || {}))
-                    .then(cursor => cursor.skip($find.$skip).limit($find.$limit).sort($find.$sort));
+                return (await daemon.collection(col))
+                    .find($query || {}, $fields || {})
+                    .skip($find.$skip).limit($find.$limit).sort($find.$sort);
             };
-            req._find = res.find = (cursor) => {
-                if (req.$find) {
-                    let $find = req.$find;
-                    return Promise.all([
-                        cursor.toArray(),
-                        cursor.count(false),
-                        $find.$sort,
-                        $find.$skip,
-                        $find.$limit,
-                        $find.$fields
-                    ]).spread((array, count, sort, skip, limit, fields) => {
-                        res.json({
-                            $array: array,
-                            $count: count,
-                            $sort: sort,
-                            $skip: skip,
-                            $limit: limit,
-                            $fields: fields
-                        });
-                    });
+            req._find = res.find = async (cursor) => {
+                if (typeof (cursor.toArray) === "function" && typeof (cursor.count) === "function"
+                    && req.$find) {
+                    let $find = Object.assign({}, req.$find);
+                    $find.$array = await cursor.toArray();
+                    $find.$count = await cursor.count(false);
+                    res.json($find);
                 }
-                else if (cursor.toArray) {
-                    cursor.toArray().then(array => res.json(array));
+                else if (typeof (cursor.toArray) === "function") {
+                    res.json(await cursor.toArray());
                 }
                 else {
                     res.json(cursor);
                 }
             };
-            req.findOne = (col, query, fields) => {
+            req.findOne = async (col, query, fields) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
                 let $fields = req.query.$fields || req.body.$fields;
-                return daemon.collection(col).then(collection => {
-                    return collection.findOne(query || {}, fields || $fields || {});
-                });
+                return (await daemon.collection(col)).findOne(query || {}, fields || $fields || {});
             };
             req._array = req._findOne = res.array = res.findOne = (r) => {
                 res.json(r);
             };
-            req.insert = (col, op, options) => {
+            req.insert = async (col, op, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => {
-                    return collection.insert(op, options);
-                });
+                return (await daemon.collection(col)).insert(op, options);
             };
             req._insert = res.insert = r => {
                 if (r.result)
@@ -422,10 +402,10 @@ class Daemon {
                 else
                     res.json(r);
             };
-            req.insertMany = (col, op, options) => {
+            req.insertMany = async (col, op, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.insertMany(op, options));
+                return (await daemon.collection(col)).insertMany(op, options);
             };
             res.insertMany = r => {
                 if (r.result && r.ops)
@@ -433,20 +413,20 @@ class Daemon {
                 else
                     res.json(r);
             };
-            req.save = (col, op, options) => {
+            req.save = async (col, op, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.save(op, options));
+                return (await daemon.collection(col)).save(op, options);
             };
-            req.update = (col, query, op, options) => {
+            req.update = async (col, query, op, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.update(query, op, options));
+                return (await daemon.collection(col)).update(query, op, options);
             };
-            req.remove = (col, query, options) => {
+            req.remove = async (col, query, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.remove(query, options));
+                return (await daemon.collection(col)).remove(query, options);
             };
             req._remove = req._save = req._update = res.update = r => {
                 let result = r.result;
@@ -455,25 +435,25 @@ class Daemon {
                 else
                     res.json(r);
             };
-            req.findOneAndDelete = (col, filter, options) => {
+            req.findOneAndDelete = async (col, filter, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.findOneAndDelete(filter, options));
+                return (await daemon.collection(col)).findOneAndDelete(filter, options);
             };
-            req.findOneAndReplace = (col, filter, replacement, options) => {
+            req.findOneAndReplace = async (col, filter, replacement, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.findOneAndReplace(filter, replacement, options));
+                return (await daemon.collection(col)).findOneAndReplace(filter, replacement, options);
             };
-            req.findOneAndUpdate = (col, filter, update, options) => {
+            req.findOneAndUpdate = async (col, filter, update, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                return daemon.collection(col).then((collection) => collection.findOneAndUpdate(filter, update, options));
+                return (await daemon.collection(col)).findOneAndUpdate(filter, update, options);
             };
-            req.bucket = bucketName => {
+            req.bucket = async (bucketName) => {
                 if (typeof bucketName !== "string")
                     throw new Error("need bucketName");
-                return daemon._db.then(db => new mongodb.GridFSBucket(db, { bucketName: bucketName }));
+                return new mongodb.GridFSBucket((await daemon._db), { bucketName: bucketName });
             };
             req._ex = res.ex = (ex) => {
                 res.status(500).json(ex.message ? { message: ex.message, stack: ex.stack } : { ex: ex });
