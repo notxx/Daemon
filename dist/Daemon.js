@@ -278,7 +278,7 @@ class Daemon {
                         return value;
                     }
                     const col = await daemon.collection(value.namespace);
-                    return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
+                    return col.findOne({ _id: value.oid }, { fields: fields || options.fieldsDefault });
                 }
                 else {
                     return replace(indent - 1, path, value);
@@ -348,24 +348,25 @@ class Daemon {
             req.find = async (col, query, fields, sort, skip, limit) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
-                let $find = req.$find = {}, $query = $find.$query = query, $sort = $find.$sort = sort || req.query.$sort || req.body.$sort, $skip = $find.$skip = skip || req.query.$skip || req.body.$skip || 0, $limit = $find.$limit = limit || req.query.$limit || req.body.$limit || 20, $fields = $find.$fields = fields || req.query.$fields || req.body.$fields;
+                let $find = req.$find = {}, $query = $find.$query = query, $fields = $find.$fields = fields || req.query.$fields || req.body.$fields, $skip = $find.$skip = skip || req.query.$skip || req.body.$skip || 0, $limit = $find.$limit = limit || req.query.$limit || req.body.$limit || 20, $sort = $find.$sort = sort || req.query.$sort || req.body.$sort;
                 if (typeof $skip === 'string')
-                    $find.$skip = parseInt($skip);
+                    $skip = $find.$skip = parseInt($skip);
                 if (typeof $limit === 'string')
-                    $find.$limit = parseInt($limit);
+                    $limit = $find.$limit = parseInt($limit);
                 switch (typeof $sort) {
                     case "object":
                         break;
                     case "string":
                         $find.$sort = {};
                         $find.$sort[$sort] = 1;
+                        $sort = $find.$sort;
                         break;
                     default:
                         $sort = { _id: 1 };
                 }
                 return (await daemon.collection(col))
-                    .find($query || {}, $fields || {})
-                    .skip($find.$skip).limit($find.$limit).sort($find.$sort);
+                    .find($query || {}).project($fields || {})
+                    .skip($skip).limit($limit).sort($sort);
             };
             req._find = res.find = async (cursor) => {
                 if (typeof (cursor.toArray) === "function" && typeof (cursor.count) === "function"
@@ -386,7 +387,7 @@ class Daemon {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
                 let $fields = req.query.$fields || req.body.$fields;
-                return (await daemon.collection(col)).findOne(query || {}, fields || $fields || {});
+                return (await daemon.collection(col)).findOne(query || {}, { fields: fields || $fields || {} });
             };
             req._array = req._findOne = res.array = res.findOne = (r) => {
                 res.json(r);

@@ -22,7 +22,7 @@ declare module Daemon {
     }
     interface Request extends express.Request {
         col: (collectionName: string) => Promise<mongodb.Collection>;
-        $find: any;
+        $find: FindState;
         find: (col: string, query?: {}, fields?: {}, sort?: {}, skip?: number, limit?: number) => Promise<mongodb.Cursor>;
         _find: (cursor: mongodb.Cursor) => void;
         findOne: <T>(col: string, query: any, fields?: any) => Promise<T>;
@@ -61,7 +61,21 @@ declare module Daemon {
         insertMany: (r: mongodb.InsertWriteOpResult) => void;
         update: (r: mongodb.WriteOpResult) => void;
         ex: (ex: Error | any) => void;
-        $json$options: any;
+        $json$options: JsonOptions;
+    }
+    interface JsonOptions {
+        indent?: number;
+        fields?: any;
+        fieldsDefault?: any;
+    }
+    interface FindState {
+        $query?: any;
+        $fields?: any;
+        $skip?: number;
+        $limit?: number;
+        $sort?: any | string;
+        $array?: any[];
+        $count?: number;
     }
     interface Route {
         (req: Request, res: Response, ...data: any[]): void;

@@ -52,7 +52,7 @@ declare module Daemon {
 
 	interface Request extends express.Request {
 		col:(collectionName:string) => Promise<mongodb.Collection>;
-		$find:any;
+		$find:FindState;
 		find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Promise<mongodb.Cursor>;
 		_find:(cursor:mongodb.Cursor) => void;
 		findOne:<T>(col:string, query:any, fields?:any) => Promise<T>;
@@ -83,7 +83,21 @@ declare module Daemon {
 		insertMany:(r:mongodb.InsertWriteOpResult) => void;
 		update:(r:mongodb.WriteOpResult) => void;
 		ex: (ex:Error | any) => void;
-		$json$options: any;
+		$json$options: JsonOptions;
+	}
+	interface JsonOptions {
+		indent?: number;
+		fields?: any;
+		fieldsDefault?: any;
+	}
+	interface FindState {
+		$query?: any;
+		$fields?: any;
+		$skip?: number;
+		$limit?: number;
+		$sort?: any|string;
+		$array?: any[];
+		$count?: number;
 	}
 	interface Route {
 		(req: Request, res: Response, ...data:any[]): void;
@@ -334,7 +348,7 @@ class Daemon {
 		// 替换express的json响应
 		let daemon = this,
 			_json = express.response.json;
-		express.response.json = async function json(status:number, body?:any, options?:{ indent:number, fields: any, fieldsDefault: any }) {
+		express.response.json = async function json(status:number, body?:any, options?:Daemon.JsonOptions) {
 			const promiseJSON = async (indent: number, path: Array<string>, value: any) => { // 实际展开值的函数
 				//console.log(`replacer ${indent} ${path.join('.')}`);
 				if (typeof value !== "object" || !value || indent < 0) { return value; }
@@ -363,7 +377,7 @@ class Daemon {
 					let fields = options.fields[value.namespace];
 					if (fields === false) { return value; }
 					const col = await daemon.collection(value.namespace)
-					return col.findOne({ _id: value.oid }, fields || options.fieldsDefault);
+					return col.findOne({ _id: value.oid }, { fields: fields || options.fieldsDefault });
 				} else {
 					//console.log(`replacer ${con.name}`);
 					return replace(indent - 1, path, value);
@@ -432,29 +446,30 @@ class Daemon {
 			req.col = daemon.collection.bind(this);
 			req.find = async (col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
-				let $find:any = req.$find = {},
+				let $find:Daemon.FindState = req.$find = {},
 					$query = $find.$query = query,
-					$sort = $find.$sort = sort || req.query.$sort || req.body.$sort,
+					$fields = $find.$fields = fields || req.query.$fields || req.body.$fields,
 					$skip = $find.$skip = skip || req.query.$skip || req.body.$skip || 0,
 					$limit = $find.$limit = limit || req.query.$limit || req.body.$limit || 20,
-					$fields = $find.$fields = fields || req.query.$fields || req.body.$fields;
+					$sort = $find.$sort = sort || req.query.$sort || req.body.$sort;
 				if (typeof $skip === 'string')
-					$find.$skip = parseInt($skip);
+					$skip = $find.$skip = parseInt($skip);
 				if (typeof $limit === 'string')
-					$find.$limit = parseInt($limit);
+					$limit = $find.$limit = parseInt($limit);
 				switch (typeof $sort) {
 				case "object":
 					break;
 				case "string":
 					$find.$sort = {};
 					$find.$sort[$sort] = 1;
+					$sort = $find.$sort;
 					break;
 				default:
 					$sort = { _id: 1 };
 				}
 				return (await daemon.collection(col))
-					.find($query || {}, $fields || {})
-					.skip($find.$skip).limit($find.$limit).sort($find.$sort);
+					.find($query || {}).project($fields || {})
+					.skip($skip).limit($limit).sort($sort);
 			};
 			req._find = res.find = async (cursor: mongodb.Cursor) => {
 				if (typeof(cursor.toArray) === "function" && typeof(cursor.count) === "function" // check cursor
@@ -472,7 +487,7 @@ class Daemon {
 			req.findOne = async (col:string, query:{}, fields?:{}) => {
 				if (typeof col !== "string") throw new Error("need collectionName");
 				let $fields = req.query.$fields || req.body.$fields;
-				return (await daemon.collection(col)).findOne(query || {}, fields || $fields || {});
+				return (await daemon.collection(col)).findOne(query || {}, { fields: fields || $fields || {} });
 			};
 			req._array = req._findOne = res.array = res.findOne = (r:any) => {
 				res.json(r);
