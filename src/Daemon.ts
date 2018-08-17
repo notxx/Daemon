@@ -51,8 +51,12 @@ declare module Daemon {
 	}
 
 	interface Request extends express.Request {
+		/**
+		 * 获取数据表
+		 * 
+		 * @param collectionName 表名
+		 */
 		col:(collectionName:string) => Promise<mongodb.Collection>;
-		$find:FindState;
 		find:(col:string, query?:{}, fields?:{}, sort?:{}, skip?:number, limit?:number) => Promise<mongodb.Cursor>;
 		_find:(cursor:mongodb.Cursor) => void;
 		findOne:<T>(col:string, query:any, fields?:any) => Promise<T>;
@@ -74,6 +78,21 @@ declare module Daemon {
 		_ex: (ex:Error | {}) => void;
 		_export:(data:any, name:string[]) => void;
 		_exportInt:(data:any, name:string[]) => void;
+		/**
+		 * 抽取属性为<code>id</code>
+		 * 
+		 * @param prop 属性名
+		 */
+		id:(prop?:string) => mongodb.ObjectId | string;
+		/**
+		 * 抽取属性为<code>DBRef</code>
+		 * 
+		 * @param prop 属性名
+		 * @param $ref 数据表
+		 */
+		dbRef:(prop:string, $ref?:string) => mongodb.DBRef;
+		/** 检索状态 */
+		$find:FindState;
 	}
 	interface Response extends express.Response {
 		find:<T>(cursor:mongodb.Cursor) => void;
@@ -561,6 +580,24 @@ class Daemon {
 				names.forEach((name) => {
 					data[name] = parseInt(req.query[name] || req.body[name]);
 				})
+			};
+			req.id = prop => {
+				prop = prop || "_id";
+				let id = (req.body[prop] || req.params[prop]);
+				return (typeof(id.$id) === "string") ?
+					new mongodb.ObjectId(id.$id) : id;
+			};
+			req.dbRef = (prop, $ref) => {
+				if (!prop) throw new TypeError("prop");
+				let id = (req.body[prop] || req.params[prop]);
+				if (!id) throw new TypeError("id");
+				if (typeof(id.$ref) === "string") {
+					return new mongodb.DBRef(id.$ref, 
+						(typeof(id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
+				} else if (typeof($ref) === "string") {
+					return new mongodb.DBRef($ref, 
+						(typeof(id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
+				} else throw new TypeError("need $ref");
 			};
 			next();
 		});

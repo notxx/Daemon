@@ -469,6 +469,27 @@ class Daemon {
                     data[name] = parseInt(req.query[name] || req.body[name]);
                 });
             };
+            req.id = prop => {
+                prop = prop || "_id";
+                let id = (req.body[prop] || req.params[prop]);
+                return (typeof (id.$id) === "string") ?
+                    new mongodb.ObjectId(id.$id) : id;
+            };
+            req.dbRef = (prop, $ref) => {
+                if (!prop)
+                    throw new TypeError("prop");
+                let id = (req.body[prop] || req.params[prop]);
+                if (!id)
+                    throw new TypeError("id");
+                if (typeof (id.$ref) === "string") {
+                    return new mongodb.DBRef(id.$ref, (typeof (id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
+                }
+                else if (typeof ($ref) === "string") {
+                    return new mongodb.DBRef($ref, (typeof (id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
+                }
+                else
+                    throw new TypeError("need $ref");
+            };
             next();
         });
     }

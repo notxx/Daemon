@@ -22,7 +22,6 @@ declare module Daemon {
     }
     interface Request extends express.Request {
         col: (collectionName: string) => Promise<mongodb.Collection>;
-        $find: FindState;
         find: (col: string, query?: {}, fields?: {}, sort?: {}, skip?: number, limit?: number) => Promise<mongodb.Cursor>;
         _find: (cursor: mongodb.Cursor) => void;
         findOne: <T>(col: string, query: any, fields?: any) => Promise<T>;
@@ -52,6 +51,9 @@ declare module Daemon {
         _ex: (ex: Error | {}) => void;
         _export: (data: any, name: string[]) => void;
         _exportInt: (data: any, name: string[]) => void;
+        id: (prop?: string) => mongodb.ObjectId | string;
+        dbRef: (prop: string, $ref?: string) => mongodb.DBRef;
+        $find: FindState;
     }
     interface Response extends express.Response {
         find: <T>(cursor: mongodb.Cursor) => void;
