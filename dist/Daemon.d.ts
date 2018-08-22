@@ -52,7 +52,7 @@ declare module Daemon {
         _export: (data: any, name: string[]) => void;
         _exportInt: (data: any, name: string[]) => void;
         id: (prop?: string) => mongodb.ObjectId | string;
-        dbRef: (prop: string, $ref?: string) => mongodb.DBRef;
+        dbRef: (prop: string, $ref?: string) => Promise<mongodb.DBRef>;
         $find: FindState;
     }
     interface Response extends express.Response {

@@ -90,7 +90,7 @@ declare module Daemon {
 		 * @param prop 属性名
 		 * @param $ref 数据表
 		 */
-		dbRef:(prop:string, $ref?:string) => mongodb.DBRef;
+		dbRef:(prop:string, $ref?:string) => Promise<mongodb.DBRef>;
 		/** 检索状态 */
 		$find:FindState;
 	}
@@ -584,13 +584,14 @@ class Daemon {
 			req.id = prop => {
 				prop = prop || "_id";
 				let id = (req.body[prop] || req.params[prop]);
+				if (!id) return id;
 				return (typeof(id.$id) === "string") ?
 					new mongodb.ObjectId(id.$id) : id;
 			};
-			req.dbRef = (prop, $ref) => {
+			req.dbRef = async (prop, $ref) => {
 				if (!prop) throw new TypeError("prop");
 				let id = (req.body[prop] || req.params[prop]);
-				if (!id) throw new TypeError("id");
+				if (!id) return Promise.reject();
 				if (typeof(id.$ref) === "string") {
 					return new mongodb.DBRef(id.$ref, 
 						(typeof(id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
