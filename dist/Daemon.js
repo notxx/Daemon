@@ -280,6 +280,9 @@ class Daemon {
                     const col = await daemon.collection(value.namespace);
                     return col.findOne({ _id: value.oid }, { fields: fields || options.fieldsDefault });
                 }
+                else if (value._bsontype === "Decimal128" && typeof (value.toJSON) === "function") {
+                    return value.toJSON();
+                }
                 else {
                     return replace(indent - 1, path, value);
                 }
@@ -471,7 +474,7 @@ class Daemon {
             };
             req.id = prop => {
                 prop = prop || "_id";
-                let id = (req.body[prop] || req.params[prop]);
+                let id = (req.query[prop] || req.body[prop]);
                 if (!id)
                     return id;
                 return (typeof (id.$id) === "string") ?
@@ -480,7 +483,7 @@ class Daemon {
             req.dbRef = async (prop, $ref) => {
                 if (!prop)
                     throw new TypeError("prop");
-                let id = (req.body[prop] || req.params[prop]);
+                let id = (req.query[prop] || req.body[prop]);
                 if (!id)
                     return Promise.reject();
                 if (typeof (id.$ref) === "string") {
