@@ -593,13 +593,15 @@ class Daemon {
 			req.dbRef = async (prop, $ref) => {
 				if (!prop) throw new TypeError("prop");
 				let id = (req.query[prop] || req.body[prop]);
-				if (!id) return Promise.reject();
-				if (typeof(id.$ref) === "string") {
-					return new mongodb.DBRef(id.$ref, 
-						(typeof(id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
-				} else if (typeof($ref) === "string") {
+				if (!id) return Promise.reject("null");
+				let hasOid = (typeof(id.$id) === "string"); // has oid
+				if (hasOid && !/^[a-f\d]{24}$/i.test(id.$id)) return Promise.reject("!ObjectId");
+				if (typeof($ref) === "string") {
 					return new mongodb.DBRef($ref, 
-						(typeof(id.$id) === "string") ? new mongodb.ObjectId(id.$id) : id);
+						hasOid ? new mongodb.ObjectId(id.$id) : id);
+				} else if (typeof(id.$ref) === "string") {
+					return new mongodb.DBRef(id.$ref, 
+						hasOid ? new mongodb.ObjectId(id.$id) : id);
 				} else throw new TypeError("need $ref");
 			};
 			next();
