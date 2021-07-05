@@ -1,24 +1,26 @@
+/// <reference types="serve-static" />
 import * as express from "express";
-import * as cm from "connect-mongo";
 declare global {
     interface Promise<T> {
         spread<TResult1, TResult2>(onfulfilled: (...values: any[]) => TResult1 | PromiseLike<TResult1>, onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>): Promise<TResult1 | TResult2>;
     }
 }
 import * as mongodb from "mongodb";
-import Db = mongodb.Db;
 import * as moment from "moment";
 declare module Daemon {
-    interface SessionOptions extends cm.DefaultOptions {
+    interface SessionOptions {
+        ttl: number;
+        touchAfter: number;
+        stringify: boolean;
         sessionSecret: string;
-        db?: Db;
-        dbPromise?: Promise<Db>;
+        db?: mongodb.Db;
+        dbPromise?: Promise<mongodb.Db>;
     }
-    interface MongoSessionOptions extends SessionOptions, cm.NativeMongoOptions {
-        db: Db;
+    interface MongoSessionOptions extends SessionOptions {
+        db: mongodb.Db;
     }
-    interface MongoPromiseSessionOptions extends SessionOptions, cm.NativeMongoPromiseOptions {
-        dbPromise: Promise<Db>;
+    interface MongoPromiseSessionOptions extends SessionOptions {
+        dbPromise: Promise<mongodb.Db>;
     }
     interface Request extends express.Request {
         col: (collectionName: string) => Promise<mongodb.Collection>;
@@ -35,18 +37,16 @@ declare module Daemon {
         update: (col: string, query: any, op: any, options?: mongodb.ReplaceOneOptions & {
             multi?: boolean;
         }) => Promise<mongodb.WriteOpResult>;
+        updateMany: (col: string, query: mongodb.FilterQuery<any>, op: (mongodb.UpdateQuery<any>), options?: mongodb.UpdateManyOptions) => Promise<mongodb.UpdateWriteOpResult>;
+        updateOne: (col: string, query: mongodb.FilterQuery<any>, op: (mongodb.UpdateQuery<any>), options?: mongodb.UpdateOneOptions) => Promise<mongodb.UpdateWriteOpResult>;
         _update: (r: mongodb.WriteOpResult) => void;
         remove: (col: string, query: any, options?: mongodb.CommonOptions & {
             single?: boolean;
         }) => Promise<mongodb.WriteOpResult>;
         _remove: (r: mongodb.WriteOpResult) => void;
-        findOneAndDelete: (col: string, filter: Object, options: {
-            projection?: Object;
-            sort?: Object;
-            maxTimeMS?: number;
-        }) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
-        findOneAndReplace: (col: string, filter: Object, replacement: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
-        findOneAndUpdate: (col: string, filter: Object, update: Object, options?: mongodb.FindOneAndReplaceOption) => Promise<mongodb.FindAndModifyWriteOpResultObject>;
+        findOneAndDelete: (col: string, filter: Object, options: mongodb.FindOneAndDeleteOption<any>) => Promise<mongodb.FindAndModifyWriteOpResultObject<any>>;
+        findOneAndReplace: (col: string, filter: Object, replacement: Object, options?: mongodb.FindOneAndReplaceOption<any>) => Promise<mongodb.FindAndModifyWriteOpResultObject<any>>;
+        findOneAndUpdate: (col: string, filter: Object, update: Object, options?: mongodb.FindOneAndReplaceOption<any>) => Promise<mongodb.FindAndModifyWriteOpResultObject<any>>;
         bucket: (bucketName: string) => Promise<mongodb.GridFSBucket>;
         _ex: (ex: Error | {}) => void;
         _export: (data: any, name: string[]) => void;
@@ -59,8 +59,8 @@ declare module Daemon {
         find: <T>(cursor: mongodb.Cursor) => void;
         findOne: <T>(r: T) => void;
         array: <T>(r: T[]) => void;
-        insert: (r: mongodb.InsertOneWriteOpResult) => void;
-        insertMany: (r: mongodb.InsertWriteOpResult) => void;
+        insert: (r: mongodb.InsertOneWriteOpResult<any>) => void;
+        insertMany: (r: mongodb.InsertWriteOpResult<any>) => void;
         update: (r: mongodb.WriteOpResult) => void;
         ex: (ex: Error | any) => void;
         $json$options: JsonOptions;
@@ -92,10 +92,12 @@ declare module Daemon {
 }
 interface Daemon {
     CGI(path: string, conf?: {}): void;
+    _moment(exp: string | number): moment.Moment;
+}
+interface MongoDaemon extends Daemon {
     collection(col: string): Promise<mongodb.Collection>;
     session(options: (Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions)): express.RequestHandler;
     mongodb(): express.RequestHandler;
-    _moment(exp: string | number): moment.Moment;
 }
 declare class Daemon {
     static _init(): void;
@@ -108,11 +110,19 @@ declare class Daemon {
     private static _triggerunload;
     private static _require;
     static require(id: string): any;
-    private _db;
     private _handlers;
-    constructor(uri: string, db: string, username?: string, password?: string);
+    constructor();
     handlers(handlers: {}): void;
     private conf;
-    hot(id: string): void;
 }
-export = Daemon;
+declare class MongoDaemon {
+    private _db;
+    constructor(uri: string, db: string, username?: string, password?: string);
+    hot(id: string): void;
+    _moment(exp: string | number): moment.Moment;
+}
+declare const _default: {
+    Daemon: typeof Daemon;
+    MongoDaemon: typeof MongoDaemon;
+};
+export = _default;

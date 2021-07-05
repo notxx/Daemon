@@ -13,8 +13,6 @@ Promise.prototype.spread = function spread(onfulfilled, onrejected) {
         }
     }, onrejected);
 };
-const mongodb = require("mongodb");
-const moment = require("moment");
 var Event;
 (function (Event) {
     Event[Event["Load"] = 0] = "Load";
@@ -183,7 +181,7 @@ class MongoDaemon {
         else {
             console.log(`connect_mongodb(${uri})`);
         }
-        const MongoClient = require("mongodb").MongoClient;
+        const { MongoClient } = require("mongodb");
         let opt = {
             promiseLibrary: Promise,
             useNewUrlParser: true
@@ -242,6 +240,7 @@ class MongoDaemon {
         }
     }
     mongodb() {
+        const mongodb = require("mongodb");
         const express = require("express");
         let daemon = this, _json = express.response.json;
         express.response.json = async function json(status, body, options) {
@@ -514,6 +513,7 @@ class MongoDaemon {
         });
     }
     _moment(exp) {
+        const moment = require("moment");
         let exp0, m;
         if (typeof exp === 'string' && /^\d+$/.test(exp))
             exp0 = parseInt(exp);

@@ -4,9 +4,7 @@ import * as path from "path"
 import * as domain from "domain"
 import * as cluster from "cluster"
 // express
-/// <reference path="../typings/tsd.d.ts" />
-import express = require("express")
-import cm = require("connect-mongo")
+import * as express from "express"
 
 // Promise
 /** @interal */
@@ -28,21 +26,24 @@ Promise.prototype.spread = function spread<TResult1, TResult2>(onfulfilled: (...
 };
 
 // mongodb
-import mongodb = require("mongodb")
+import * as mongodb from "mongodb"
 
 // moment
 import * as moment from "moment"
 
 declare module Daemon {
-	interface SessionOptions extends cm.DefaultOptions {
+	interface SessionOptions {
+		ttl: number,
+		touchAfter: number,
+		stringify: boolean,
 		sessionSecret: string; // 会话密钥
 		db?: mongodb.Db;
 		dbPromise?: Promise<mongodb.Db>;
 	}
-	interface MongoSessionOptions extends SessionOptions, cm.NativeMongoOptions {
+	interface MongoSessionOptions extends SessionOptions {
 		db: mongodb.Db;
 	}
-	interface MongoPromiseSessionOptions extends SessionOptions, cm.NativeMongoPromiseOptions {
+	interface MongoPromiseSessionOptions extends SessionOptions {
 		dbPromise: Promise<mongodb.Db>;
 	}
 
@@ -313,7 +314,7 @@ class MongoDaemon {
 		} else {
 			console.log(`connect_mongodb(${uri})`);
 		}
-		const MongoClient = require("mongodb").MongoClient
+		const { MongoClient } = require("mongodb")
 		let opt:mongodb.MongoClientOptions = {
 			promiseLibrary: Promise,
 			useNewUrlParser: true
@@ -370,6 +371,7 @@ class MongoDaemon {
 	}
 	// region mongodb
 	mongodb() { // 向req中注入一些方便方法，并替换res的json方法，支持DBRef展开
+		const mongodb = require("mongodb")
 		const express = require("express")
 		// 替换express的json响应
 		let daemon = this,
@@ -624,6 +626,7 @@ class MongoDaemon {
 	}
 	// endregion
 	_moment(exp:string|number): moment.Moment { // 将输入的参数转化为moment类型的值
+		const moment = require("moment")
 		let exp0: number, m:moment.Moment;
 		if (typeof exp === 'string' && /^\d+$/.test(exp))
 			exp0 = parseInt(exp);
