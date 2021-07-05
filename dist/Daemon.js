@@ -3,10 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const domain = require("domain");
 const cluster = require("cluster");
-const express = require("express");
-const session = require("express-session");
-const cm = require("connect-mongo");
-let MongoStore = cm(session);
 Promise.prototype.spread = function spread(onfulfilled, onrejected) {
     return this.then((result) => {
         if (Array.isArray(result)) {
@@ -18,17 +14,17 @@ Promise.prototype.spread = function spread(onfulfilled, onrejected) {
     }, onrejected);
 };
 const mongodb = require("mongodb");
-var MongoClient = mongodb.MongoClient;
 const moment = require("moment");
 var Event;
 (function (Event) {
     Event[Event["Load"] = 0] = "Load";
     Event[Event["Unload"] = 1] = "Unload";
 })(Event || (Event = {}));
-const rootpath = module.parent
+const rootpath = (module.parent && module.parent.filename)
     ? path.dirname(module.parent.filename)
     : __dirname;
 class Daemon {
+    constructor() { }
     static _init() {
         if (cluster.isMaster)
             cluster.on("online", worker => {
@@ -118,26 +114,6 @@ class Daemon {
         }
         return this._require(id);
     }
-    constructor(uri, db, username, password) {
-        if (!uri)
-            throw new Error("need uri");
-        if (!db)
-            throw new Error("need db");
-        if (username && password) {
-            console.log(`connect_mongodb(${uri}, ${username}, ********)`);
-        }
-        else {
-            console.log(`connect_mongodb(${uri})`);
-        }
-        let opt = {
-            promiseLibrary: Promise,
-            useNewUrlParser: true
-        };
-        if (username && password)
-            opt.auth = { user: username, password: password };
-        this._db = MongoClient.connect(uri, opt).then(client => client.db(db));
-        this._handlers = {};
-    }
     handlers(handlers) {
         this._handlers = Object.assign({}, handlers);
     }
@@ -194,6 +170,28 @@ class Daemon {
             });
         });
     }
+}
+class MongoDaemon {
+    constructor(uri, db, username, password) {
+        if (!uri)
+            throw new Error("need uri");
+        if (!db)
+            throw new Error("need db");
+        if (username && password) {
+            console.log(`connect_mongodb(${uri}, ${username}, ********)`);
+        }
+        else {
+            console.log(`connect_mongodb(${uri})`);
+        }
+        const MongoClient = require("mongodb").MongoClient;
+        let opt = {
+            promiseLibrary: Promise,
+            useNewUrlParser: true
+        };
+        if (username && password)
+            opt.auth = { user: username, password: password };
+        this._db = MongoClient.connect(uri, opt).then((client) => client.db(db));
+    }
     hot(id) {
     }
     async collection(col) {
@@ -202,6 +200,9 @@ class Daemon {
         return (await this._db).collection(col);
     }
     session(options) {
+        const session = require("express-session");
+        const cm = require("connect-mongo");
+        let MongoStore = cm(session);
         function _session(opt) {
             return session({
                 secret: opt.sessionSecret,
@@ -241,6 +242,7 @@ class Daemon {
         }
     }
     mongodb() {
+        const express = require("express");
         let daemon = this, _json = express.response.json;
         express.response.json = async function json(status, body, options) {
             const promiseJSON = async (indent, path, value) => {
@@ -427,6 +429,16 @@ class Daemon {
                     throw new Error("need collectionName");
                 return (await daemon.collection(col)).update(query, op, options);
             };
+            req.updateMany = async (col, query, op, options) => {
+                if (typeof col !== "string")
+                    throw new Error("need collectionName");
+                return (await daemon.collection(col)).updateMany(query, op, options);
+            };
+            req.updateOne = async (col, query, op, options) => {
+                if (typeof col !== "string")
+                    throw new Error("need collectionName");
+                return (await daemon.collection(col)).updateOne(query, op, options);
+            };
             req.remove = async (col, query, options) => {
                 if (typeof col !== "string")
                     throw new Error("need collectionName");
@@ -526,4 +538,4 @@ Daemon.Spawn = class Spawn {
     }
 };
 Daemon._init();
-module.exports = Daemon;
+module.exports = { Daemon, MongoDaemon };
