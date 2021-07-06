@@ -525,7 +525,7 @@ class MongoDaemon {
         return m.isValid() ? m : null;
     }
 }
-Daemon.Spawn = class Spawn {
+class Spawn {
     constructor(handler) {
         if (typeof (handler) !== "function")
             throw new TypeError("handler");
@@ -536,6 +536,6 @@ Daemon.Spawn = class Spawn {
             throw new TypeError("handler");
         this.handler(req, res, next);
     }
-};
+}
 Daemon._init();
-module.exports = { Daemon, MongoDaemon };
+module.exports = { Daemon, Spawn, MongoDaemon };

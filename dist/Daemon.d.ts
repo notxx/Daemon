@@ -82,13 +82,6 @@ declare module Daemon {
     interface Route {
         (req: Request, res: Response, ...data: any[]): void;
     }
-    class Spawn {
-        conf: any;
-        global: any;
-        daemon: Daemon;
-        constructor(callback: (req: Daemon.Request, res: Daemon.Response, next: Function) => any);
-        exec: (req: Request, res: Response, next: Function) => any;
-    }
 }
 interface Daemon {
     CGI(path: string, conf?: {}): void;
@@ -121,8 +114,17 @@ declare class MongoDaemon {
     hot(id: string): void;
     _moment(exp: string | number): moment.Moment;
 }
+declare class Spawn {
+    conf: any;
+    global: any;
+    daemon: Daemon;
+    constructor(handler: (req: Daemon.Request, res: Daemon.Response, next: Function) => any);
+    private handler;
+    exec(req: Daemon.Request, res: Daemon.Response, next: Function): void;
+}
 declare const _default: {
     Daemon: typeof Daemon;
+    Spawn: typeof Spawn;
     MongoDaemon: typeof MongoDaemon;
 };
 export = _default;
