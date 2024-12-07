@@ -88,6 +88,7 @@ interface Daemon {
     _moment(exp: string | number): moment.Moment;
 }
 interface MongoDaemon extends Daemon {
+    close(): Promise<void>;
     collection(col: string): Promise<mongodb.Collection>;
     session(options: (Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions)): express.RequestHandler;
     mongodb(): express.RequestHandler;
@@ -108,7 +109,8 @@ declare class Daemon {
     handlers(handlers: {}): void;
     private conf;
 }
-declare class MongoDaemon {
+declare class MongoDaemon extends Daemon {
+    private _mc;
     private _db;
     constructor(uri: string, db: string, username?: string, password?: string);
     hot(id: string): void;

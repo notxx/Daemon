@@ -126,6 +126,7 @@ interface Daemon {
 	_moment(exp:string|number): moment.Moment
 }
 interface MongoDaemon extends Daemon {
+	close(): Promise<void>;
 	collection(col:string): Promise<mongodb.Collection>
 	session(options: (Daemon.MongoSessionOptions | Daemon.MongoPromiseSessionOptions)): express.RequestHandler
 	mongodb(): express.RequestHandler
@@ -141,8 +142,8 @@ interface Message {
 	filename: string
 }
 
-const rootpath = (module.parent && module.parent.filename)
-		? path.dirname(module.parent.filename) // 使用父模块的相对路径
+const rootpath = (require.main && require.main.filename)
+		? path.dirname(require.main.filename) // 使用父模块的相对路径
 		: __dirname;
 
 class Daemon {
@@ -291,7 +292,8 @@ class Daemon {
 		});
 	}
 }
-class MongoDaemon {
+class MongoDaemon extends Daemon {
+	private _mc: Promise<mongodb.MongoClient>; 
 	private _db: Promise<mongodb.Db>; // 打开的mongodb的promise
 	/**
 	 * @param uri 链接字符串
@@ -302,6 +304,7 @@ class MongoDaemon {
 	constructor(uri: string, db: string, username?: string, password?: string) {
 		if (!uri) throw new Error("need uri");
 		if (!db) throw new Error("need db");
+		super();
 		if (username && password) {
 			console.log(`connect_mongodb(${uri}, ${username}, ********)`);
 		} else {
@@ -310,10 +313,15 @@ class MongoDaemon {
 		const { MongoClient } = require("mongodb")
 		let opt:mongodb.MongoClientOptions = {
 			promiseLibrary: Promise,
-			useNewUrlParser: true
+			useNewUrlParser: true,
+			useUnifiedTopology: true
 		};
 		if (username && password) opt.auth = { user: username, password: password };
-		this._db = MongoClient.connect(uri, opt).then((client:mongodb.MongoClient) => client.db(db));
+		this._mc = MongoClient.connect(uri, opt);
+		this._db = this._mc.then((client:mongodb.MongoClient) => client.db(db));
+	}
+	async close() {
+		(await this._mc).close();
 	}
 	hot(id:string) {
 	}

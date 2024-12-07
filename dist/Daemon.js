@@ -18,11 +18,10 @@ var Event;
     Event[Event["Load"] = 0] = "Load";
     Event[Event["Unload"] = 1] = "Unload";
 })(Event || (Event = {}));
-const rootpath = (module.parent && module.parent.filename)
-    ? path.dirname(module.parent.filename)
+const rootpath = (require.main && require.main.filename)
+    ? path.dirname(require.main.filename)
     : __dirname;
 class Daemon {
-    constructor() { }
     static _init() {
         if (cluster.isMaster)
             cluster.on("online", worker => {
@@ -112,6 +111,7 @@ class Daemon {
         }
         return this._require(id);
     }
+    constructor() { }
     handlers(handlers) {
         this._handlers = Object.assign({}, handlers);
     }
@@ -169,12 +169,13 @@ class Daemon {
         });
     }
 }
-class MongoDaemon {
+class MongoDaemon extends Daemon {
     constructor(uri, db, username, password) {
         if (!uri)
             throw new Error("need uri");
         if (!db)
             throw new Error("need db");
+        super();
         if (username && password) {
             console.log(`connect_mongodb(${uri}, ${username}, ********)`);
         }
@@ -184,11 +185,16 @@ class MongoDaemon {
         const { MongoClient } = require("mongodb");
         let opt = {
             promiseLibrary: Promise,
-            useNewUrlParser: true
+            useNewUrlParser: true,
+            useUnifiedTopology: true
         };
         if (username && password)
             opt.auth = { user: username, password: password };
-        this._db = MongoClient.connect(uri, opt).then((client) => client.db(db));
+        this._mc = MongoClient.connect(uri, opt);
+        this._db = this._mc.then((client) => client.db(db));
+    }
+    async close() {
+        (await this._mc).close();
     }
     hot(id) {
     }
